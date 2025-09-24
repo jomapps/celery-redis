@@ -1,0 +1,427 @@
+openapi: 3.0.3
+info:
+  title: AI Movie Platform - Task Service API
+  description: Standalone GPU-intensive task processing service for AI movie production
+  version: 1.0.0
+  contact:
+    name: Task Service API
+    email: support@aimovieplatform.com
+
+servers:
+  - url: http://localhost:8001
+    description: Local development server
+  - url: https://tasks.aimovieplatform.com
+    description: Production server
+
+security:
+  - ApiKeyAuth: []
+
+paths:
+  /api/v1/health:
+    get:
+      summary: Health check endpoint
+      tags: [Health]
+      security: []
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "healthy"
+                  timestamp:
+                    type: string
+                    format: date-time
+
+  /api/v1/tasks/submit:
+    post:
+      summary: Submit a new task for processing
+      tags: [Tasks]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaskSubmissionRequest'
+      responses:
+        '201':
+          description: Task successfully submitted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskSubmissionResponse'
+        '400':
+          description: Invalid request data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized - invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/tasks/{task_id}/status:
+    get:
+      summary: Get task status and progress
+      tags: [Tasks]
+      parameters:
+        - name: task_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Task status retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskStatusResponse'
+        '404':
+          description: Task not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/tasks/{task_id}/cancel:
+    delete:
+      summary: Cancel a queued or processing task
+      tags: [Tasks]
+      parameters:
+        - name: task_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Task cancelled successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  task_id:
+                    type: string
+                    format: uuid
+                  status:
+                    type: string
+                    example: "cancelled"
+        '400':
+          description: Task cannot be cancelled (already completed)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Task not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/tasks/{task_id}/retry:
+    post:
+      summary: Retry a failed task with same parameters
+      tags: [Tasks]
+      parameters:
+        - name: task_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '201':
+          description: Task retry submitted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskSubmissionResponse'
+        '400':
+          description: Task cannot be retried (not in failed status)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/projects/{project_id}/tasks:
+    get:
+      summary: Get all tasks for a specific project
+      tags: [Projects]
+      parameters:
+        - name: project_id
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^[a-zA-Z0-9_-]+$'
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [queued, processing, completed, failed, cancelled]
+        - name: task_type
+          in: query
+          schema:
+            type: string
+            enum: [generate_video, generate_image, process_audio, render_animation]
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: Project tasks retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectTasksResponse'
+
+  /api/v1/workers/status:
+    get:
+      summary: Get status of all workers
+      tags: [Workers]
+      responses:
+        '200':
+          description: Worker status retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  workers:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/WorkerStatus'
+                  total_workers:
+                    type: integer
+                  active_workers:
+                    type: integer
+                  gpu_utilization:
+                    type: number
+                    format: float
+                    minimum: 0
+                    maximum: 1
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+
+  schemas:
+    TaskSubmissionRequest:
+      type: object
+      required:
+        - project_id
+        - task_type
+        - task_data
+      properties:
+        project_id:
+          type: string
+          pattern: '^[a-zA-Z0-9_-]+$'
+          example: "detective_series_001"
+        task_type:
+          type: string
+          enum: [generate_video, generate_image, process_audio, render_animation]
+          example: "generate_video"
+        task_data:
+          type: object
+          description: Task-specific parameters
+          example:
+            storyboard_images: ["https://example.com/frame1.jpg", "https://example.com/frame2.jpg"]
+            scene_description: "Detective enters the dark alley"
+            camera_angle: "wide_shot"
+            lighting: "noir_dramatic"
+        priority:
+          type: integer
+          enum: [1, 2, 3]
+          default: 2
+          description: "1=high, 2=normal, 3=low"
+        callback_url:
+          type: string
+          format: uri
+          example: "https://main-app.com/api/webhooks/task-complete"
+        metadata:
+          type: object
+          example:
+            user_id: "user123"
+            agent_id: "video_generation_agent"
+            scene_id: "scene_005"
+
+    TaskSubmissionResponse:
+      type: object
+      properties:
+        task_id:
+          type: string
+          format: uuid
+          example: "abc123-def456-ghi789"
+        status:
+          type: string
+          example: "queued"
+        project_id:
+          type: string
+          example: "detective_series_001"
+        estimated_duration:
+          type: integer
+          description: "Estimated processing time in seconds"
+          example: 300
+        queue_position:
+          type: integer
+          example: 5
+        created_at:
+          type: string
+          format: date-time
+
+    TaskStatusResponse:
+      type: object
+      properties:
+        task_id:
+          type: string
+          format: uuid
+        project_id:
+          type: string
+        status:
+          type: string
+          enum: [queued, processing, completed, failed, cancelled]
+        progress:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+          example: 0.75
+        current_step:
+          type: string
+          example: "rendering_video"
+        result:
+          type: object
+          nullable: true
+          properties:
+            media_url:
+              type: string
+              format: uri
+              example: "https://r2.cloudflare.com/bucket/project_001/video_abc123.mp4"
+            payload_media_id:
+              type: string
+              example: "64f1b2c3a8d9e0f1"
+            metadata:
+              type: object
+              properties:
+                duration:
+                  type: number
+                  format: float
+                resolution:
+                  type: string
+                file_size:
+                  type: integer
+        error:
+          type: string
+          nullable: true
+        started_at:
+          type: string
+          format: date-time
+          nullable: true
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    ProjectTasksResponse:
+      type: object
+      properties:
+        tasks:
+          type: array
+          items:
+            type: object
+            properties:
+              task_id:
+                type: string
+                format: uuid
+              task_type:
+                type: string
+              status:
+                type: string
+              created_at:
+                type: string
+                format: date-time
+              completed_at:
+                type: string
+                format: date-time
+                nullable: true
+              result_url:
+                type: string
+                format: uri
+                nullable: true
+        pagination:
+          type: object
+          properties:
+            page:
+              type: integer
+            limit:
+              type: integer
+            total:
+              type: integer
+            total_pages:
+              type: integer
+
+    WorkerStatus:
+      type: object
+      properties:
+        worker_id:
+          type: string
+        worker_type:
+          type: string
+          enum: [gpu_heavy, gpu_medium, cpu_intensive]
+        status:
+          type: string
+          enum: [active, idle, busy, offline]
+        current_task_id:
+          type: string
+          format: uuid
+          nullable: true
+        gpu_utilization:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+        memory_usage:
+          type: integer
+        tasks_completed:
+          type: integer
+        last_heartbeat:
+          type: string
+          format: date-time
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          example: "Invalid request data"
+        message:
+          type: string
+          example: "task_type must be one of: generate_video, generate_image, process_audio, render_animation"
+        timestamp:
+          type: string
+          format: date-time
