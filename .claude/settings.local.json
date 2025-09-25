@@ -10,7 +10,8 @@
       "Bash(python:*)",
       "Bash(docker run:*)",
       "Bash(uvicorn:*)",
-      "Bash(pkill:*)"
+      "Bash(pkill:*)",
+      "WebFetch(domain:tasks.ft.tc)"
     ],
     "deny": [],
     "ask": []
