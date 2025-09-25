@@ -4,10 +4,13 @@
 This guide demonstrates the complete workflow of the AI Movie Platform Task Service, from submitting a task to retrieving the generated media results.
 
 ## Prerequisites
-- Task Service API running on `http://localhost:8001`
-- Valid API key for authentication
-- Redis server running for task queue management
-- Celery workers running for task processing
+- **Auto-Movie App** running on `http://localhost:3010` (with PayloadCMS)
+- **Task Service API** running on `http://localhost:8001`
+- **Redis server** running on port 6379 for task queue management
+- **Celery workers** running for task processing
+- **Valid API key** for authentication between services
+- **MongoDB** running on port 27017 for PayloadCMS data
+- **Neo4j** running on ports 7474/7687 (optional for enhanced context)
 
 ## Test Scenarios
 

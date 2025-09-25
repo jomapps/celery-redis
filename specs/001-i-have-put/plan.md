@@ -31,7 +31,7 @@
 - Phase 3-4: Implementation execution (manual or via tools)
 
 ## Summary
-A standalone GPU-intensive task processing service for AI movie production platform. Handles video generation, image creation, audio synthesis, and other computationally expensive operations with project-based isolation and result integration with PayloadCMS. The system uses Celery with Redis for distributed task processing, FastAPI for the REST API, and integrates with cloud storage (Cloudflare R2) for media file management.
+A standalone GPU-intensive task processing service for AI movie production platform. This service operates as part of a larger distributed system with 15+ microservices, receiving requests from the Auto-Movie App (Next.js + PayloadCMS on port 3010) for video generation, image creation, audio synthesis, prompt testing, and other computationally expensive operations. Integrates with MCP Brain Service (port 8002) for knowledge graph context, uses Redis (port 6379) for task queuing, and features project-based isolation with result integration back to PayloadCMS via the Auto-Movie App API. The system uses Celery with Redis for distributed task processing, FastAPI for the REST API (port 8001), and integrates with Cloudflare R2 CDN (media.ft.tc) for media file management.
 
 ## Technical Context
 **Language/Version**: Python 3.11+ (constitutional requirement for type hints)  

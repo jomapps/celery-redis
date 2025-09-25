@@ -34,40 +34,40 @@
 - All paths relative to repository root
 
 ## Phase 3.1: Infrastructure Setup
-- [ ] T001 Create project structure with src/, tests/, app/, docker/ directories
-- [ ] T002 Initialize Python project with requirements.txt containing FastAPI, Celery, Redis, uvicorn, httpx, pydantic, pytest
-- [ ] T003 [P] Configure linting with black, flake8, and mypy in pyproject.toml
-- [ ] T004 [P] Create .env.example with all required environment variables per plan
+- [x] T001 Create project structure with app/, tests/, docker/ directories
+- [x] T002 Initialize Python project with requirements.txt containing FastAPI, Celery, Redis, uvicorn, httpx, pydantic, pytest
+- [x] T003 [P] Configure linting with black, flake8, and mypy in pyproject.toml
+- [x] T004 [P] Create .env.example with all required environment variables per plan
 
 ## Phase 3.2: Tests First (TDD) ⚠️ MUST COMPLETE BEFORE 3.3
 **CRITICAL: These tests MUST be written and MUST FAIL before ANY implementation**
 
-### Contract Tests (8 endpoints from OpenAPI spec)
-- [ ] T005 [P] Contract test GET /api/v1/health in tests/contract/test_health_get.py
-- [ ] T006 [P] Contract test POST /api/v1/tasks/submit in tests/contract/test_tasks_submit_post.py
-- [ ] T007 [P] Contract test GET /api/v1/tasks/{task_id}/status in tests/contract/test_tasks_status_get.py
-- [ ] T008 [P] Contract test DELETE /api/v1/tasks/{task_id}/cancel in tests/contract/test_tasks_cancel_delete.py
-- [ ] T009 [P] Contract test POST /api/v1/tasks/{task_id}/retry in tests/contract/test_tasks_retry_post.py
-- [ ] T010 [P] Contract test GET /api/v1/projects/{project_id}/tasks in tests/contract/test_projects_tasks_get.py
-- [ ] T011 [P] Contract test GET /api/v1/workers/status in tests/contract/test_workers_status_get.py
+### Contract Tests (7 endpoints from OpenAPI spec)
+- [x] T005 [P] Contract test GET /api/v1/health in tests/contract/test_health_get.py
+- [x] T006 [P] Contract test POST /api/v1/tasks/submit in tests/contract/test_tasks_submit_post.py
+- [x] T007 [P] Contract test GET /api/v1/tasks/{task_id}/status in tests/contract/test_tasks_status_get.py
+- [x] T008 [P] Contract test DELETE /api/v1/tasks/{task_id}/cancel in tests/contract/test_tasks_cancel_delete.py
+- [x] T009 [P] Contract test POST /api/v1/tasks/{task_id}/retry in tests/contract/test_tasks_retry_post.py
+- [x] T010 [P] Contract test GET /api/v1/projects/{project_id}/tasks in tests/contract/test_projects_tasks_get.py
+- [x] T011 [P] Contract test GET /api/v1/workers/status in tests/contract/test_workers_status_get.py
 
 ### Integration Tests (5 scenarios from quickstart)
-- [ ] T012 [P] Integration test video generation workflow in tests/integration/test_video_generation.py
+- [x] T012 [P] Integration test video generation workflow in tests/integration/test_video_generation.py
 - [ ] T013 [P] Integration test image generation workflow in tests/integration/test_image_generation.py
 - [ ] T014 [P] Integration test audio synthesis workflow in tests/integration/test_audio_synthesis.py
-- [ ] T015 [P] Integration test project task management in tests/integration/test_project_management.py
+- [x] T015 [P] Integration test project task management in tests/integration/test_project_management.py
 - [ ] T016 [P] Integration test system monitoring in tests/integration/test_system_monitoring.py
 
 ## Phase 3.3: Core Infrastructure (ONLY after tests are failing)
-- [ ] T017 Redis connection configuration in app/config.py
-- [ ] T018 Celery app initialization in app/celery_app.py
-- [ ] T019 FastAPI app creation with middleware in app/main.py
-- [ ] T020 API key authentication middleware in app/middleware/auth.py
+- [x] T017 Redis connection configuration in app/config.py
+- [x] T018 Celery app initialization in app/celery_app.py
+- [x] T019 FastAPI app creation with middleware in app/main.py
+- [x] T020 API key authentication middleware in app/middleware/auth.py
 
 ## Phase 3.4: Data Models (6 entities from data-model.md)
-- [ ] T021 [P] Task model with validation in app/models/task.py
-- [ ] T022 [P] Project model with validation in app/models/project.py
-- [ ] T023 [P] MediaResult model with validation in app/models/media_result.py
+- [x] T021 [P] Task model with validation in app/models/task.py
+- [x] T022 [P] Project model with validation in app/models/project.py
+- [x] T023 [P] MediaResult model with validation in app/models/media_result.py
 - [ ] T024 [P] TaskQueue model in app/models/task_queue.py
 - [ ] T025 [P] WorkerStatus model in app/models/worker_status.py
 - [ ] T026 [P] ProcessingProgress model in app/models/processing_progress.py
@@ -78,14 +78,14 @@
 - [ ] T029 Project management service in app/services/project_service.py
 - [ ] T030 Worker monitoring service in app/services/worker_service.py
 
-## Phase 3.6: API Implementation (8 endpoints to pass contract tests)
-- [ ] T031 Health check endpoint implementation in app/api/health.py
-- [ ] T032 Task submission endpoint implementation in app/api/tasks.py
-- [ ] T033 Task status endpoint implementation in app/api/tasks.py
-- [ ] T034 Task cancellation endpoint implementation in app/api/tasks.py
-- [ ] T035 Task retry endpoint implementation in app/api/tasks.py
-- [ ] T036 Project tasks listing endpoint implementation in app/api/projects.py
-- [ ] T037 Worker status endpoint implementation in app/api/workers.py
+## Phase 3.6: API Implementation (7 endpoints to pass contract tests)
+- [x] T031 Health check endpoint implementation in app/main.py
+- [x] T032 Task submission endpoint implementation in app/api/tasks.py
+- [x] T033 Task status endpoint implementation in app/api/tasks.py
+- [x] T034 Task cancellation endpoint implementation in app/api/tasks.py
+- [x] T035 Task retry endpoint implementation in app/api/tasks.py
+- [x] T036 Project tasks listing endpoint implementation in app/api/projects.py
+- [x] T037 Worker status endpoint implementation in app/api/workers.py
 
 ## Phase 3.7: Worker Implementation (3 task types)
 - [ ] T038 Base task class with project isolation in app/tasks/base_task.py

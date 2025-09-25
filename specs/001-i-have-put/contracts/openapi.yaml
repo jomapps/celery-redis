@@ -175,7 +175,7 @@ paths:
           in: query
           schema:
             type: string
-            enum: [generate_video, generate_image, process_audio, render_animation]
+            enum: [generate_video, generate_image, process_audio, render_animation, test_prompt]
         - name: page
           in: query
           schema:
@@ -244,7 +244,7 @@ components:
           example: "detective_series_001"
         task_type:
           type: string
-          enum: [generate_video, generate_image, process_audio, render_animation]
+          enum: [generate_video, generate_image, process_audio, render_animation, test_prompt]
           example: "generate_video"
         task_data:
           type: object

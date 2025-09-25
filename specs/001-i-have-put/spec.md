@@ -119,9 +119,14 @@ An AI movie production platform needs to offload computationally expensive tasks
 ## Dependencies and Assumptions
 
 ### External Dependencies
-- Content management system (PayloadCMS) availability for media upload
-- Cloud storage service (Cloudflare R2) for media file storage
-- GPU hardware resources for intensive processing tasks
+- **Auto-Movie App** (Next.js + PayloadCMS) on port 3010 - Main dashboard with prompt management and test studio
+- **MCP Brain Service** on port 8002 - Knowledge graph and embeddings (future integration)
+- **PayloadCMS** integration via Auto-Movie App API for media upload and test result storage
+- **Cloudflare R2** storage service for media file storage with CDN (media.ft.tc)
+- **GPU hardware resources** for intensive processing tasks
+- **Redis** on port 6379 for task queue and result storage
+- **Neo4j** on ports 7474/7687 for knowledge graph storage
+- **MongoDB** on port 27017 for PayloadCMS data storage
 
 ### Assumptions
 - Main application has established project management and user authentication
