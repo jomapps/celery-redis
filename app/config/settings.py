@@ -60,6 +60,9 @@ class Settings(BaseModel):
     metrics_port: int = 9090
     log_level: str = "INFO"
     
+    # Brain Service Integration
+    brain_service_base_url: str = "https://brain.ft.tc"
+
     # Development
     environment: str = "development"
     debug: bool = False
@@ -119,6 +122,7 @@ settings = Settings(
     enable_metrics=os.getenv("ENABLE_METRICS", "true").lower() == "true",
     metrics_port=int(os.getenv("METRICS_PORT", "9090")),
     log_level=os.getenv("LOG_LEVEL", "INFO"),
+    brain_service_base_url=os.getenv("BRAIN_SERVICE_BASE_URL", "https://brain.ft.tc"),
     environment=os.getenv("ENVIRONMENT", "development"),
     debug=os.getenv("DEBUG", "false").lower() == "true",
 )

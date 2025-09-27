@@ -23,8 +23,8 @@ SERVICE_REGISTRY: Dict[Environment, Dict[str, str]] = {
         "brain_service": "http://localhost:8002",
         
         # Database services
-        "neo4j_http": "http://localhost:7474",
-        "neo4j_bolt": "bolt://localhost:7687",
+        # "neo4j_http": "http://localhost:7474",  # Now accessed via brain service
+        # "neo4j_bolt": "bolt://localhost:7687",   # Now accessed via brain service
         "redis": "redis://localhost:6379/0",
         "mongodb": "mongodb://localhost:27017",
         
@@ -53,7 +53,7 @@ SERVICE_REGISTRY: Dict[Environment, Dict[str, str]] = {
         "brain_service": "https://brain.ngrok.pro",
         
         # Database and infrastructure
-        "neo4j_http": "https://neo4j.ngrok.pro",
+        # "neo4j_http": "https://neo4j.ngrok.pro",  # Now accessed via brain service
         
         # Monitoring services
         "prometheus": "https://metrics.ngrok.pro",
@@ -79,7 +79,7 @@ SERVICE_REGISTRY: Dict[Environment, Dict[str, str]] = {
         "brain_service": "https://brain.ft.tc",
         
         # Database and infrastructure
-        "neo4j_http": "https://neo4j.ft.tc",
+        # "neo4j_http": "https://neo4j.ft.tc",  # Now accessed via brain service
         
         # Media CDN
         "media_cdn": "https://media.ft.tc",

@@ -9,13 +9,16 @@ from typing import Dict, Any
 import structlog
 
 from ..models.task import (
-    TaskSubmissionRequest, 
-    TaskSubmissionResponse, 
+    TaskSubmissionRequest,
+    TaskSubmissionResponse,
     TaskStatusResponse,
     TaskStatus,
     Task
 )
 from ..middleware.auth import verify_api_key, validate_task_id
+from ..tasks import process_video_generation, process_image_generation, process_audio_generation
+from ..clients.brain_client import BrainServiceClient
+from ..config.settings import settings
 
 logger = structlog.get_logger()
 router = APIRouter()
@@ -55,8 +58,37 @@ async def submit_task(
         queue_position=1  # TODO: Calculate actual queue position
     )
     
-    # TODO: Store task in Redis
-    # TODO: Submit to Celery queue
+    # Submit task to appropriate Celery queue based on task type
+    task_result = None
+
+    if task_request.task_type == "video_generation":
+        task_result = process_video_generation.delay(
+            project_id=task_request.project_id,
+            scene_data=task_request.task_data.get('scene_data', {}),
+            video_params=task_request.task_data.get('video_params', {})
+        )
+    elif task_request.task_type == "image_generation":
+        task_result = process_image_generation.delay(
+            project_id=task_request.project_id,
+            image_prompt=task_request.task_data.get('prompt', ''),
+            image_params=task_request.task_data.get('image_params', {})
+        )
+    elif task_request.task_type == "audio_generation":
+        task_result = process_audio_generation.delay(
+            project_id=task_request.project_id,
+            audio_prompt=task_request.task_data.get('prompt', ''),
+            audio_params=task_request.task_data.get('audio_params', {})
+        )
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported task type: {task_request.task_type}"
+        )
+
+    # Update task with actual Celery task ID
+    if task_result:
+        task.task_id = uuid.UUID(task_result.id)
+        task.status = TaskStatus.PROCESSING
     
     logger.info(
         "Task submitted successfully",
@@ -91,14 +123,53 @@ async def get_task_status(
         task_id=validated_task_id
     )
     
-    # TODO: Retrieve task from Redis
-    # For now, return mock data to satisfy contract
-    
-    # Mock task not found
-    raise HTTPException(
-        status_code=404,
-        detail="Task not found"
-    )
+    # Try to get task status from Celery and brain service
+    try:
+        from ..celery_app import celery_app
+
+        # Get Celery task result
+        task_result = celery_app.AsyncResult(validated_task_id)
+
+        if task_result.state == 'PENDING':
+            status = TaskStatus.QUEUED
+        elif task_result.state == 'STARTED':
+            status = TaskStatus.PROCESSING
+        elif task_result.state == 'SUCCESS':
+            status = TaskStatus.COMPLETED
+        elif task_result.state == 'FAILURE':
+            status = TaskStatus.FAILED
+        else:
+            status = TaskStatus.QUEUED
+
+        # Try to get additional context from brain service
+        brain_context = None
+        try:
+            brain_client = BrainServiceClient(settings.brain_service_base_url)
+            async with brain_client.connection():
+                brain_context = await brain_client.get_task_context(validated_task_id)
+        except Exception as e:
+            logger.warning("Could not retrieve brain service context",
+                         task_id=validated_task_id, error=str(e))
+
+        # Build response with available information
+        response_data = {
+            "task_id": validated_task_id,
+            "status": status,
+            "progress": task_result.info.get('progress', 0) if task_result.info else 0,
+            "result": task_result.result if task_result.successful() else None,
+            "error": str(task_result.info) if task_result.failed() else None,
+            "created_at": brain_context.get('processing_start_time') if brain_context else datetime.utcnow().isoformat(),
+            "updated_at": datetime.utcnow().isoformat()
+        }
+
+        return TaskStatusResponse(**response_data)
+
+    except Exception as e:
+        logger.error("Failed to retrieve task status", task_id=validated_task_id, error=str(e))
+        raise HTTPException(
+            status_code=404,
+            detail="Task not found or status unavailable"
+        )
 
 
 @router.delete("/tasks/{task_id}/cancel")
