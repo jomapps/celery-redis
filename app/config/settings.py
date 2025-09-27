@@ -14,13 +14,8 @@ load_dotenv()
 class Settings(BaseModel):
     """Application settings with environment variable support"""
     
-    # Redis Configuration
+    # Redis Configuration - Single URL for all Redis needs
     redis_url: str = "redis://localhost:6379/0"
-    redis_password: Optional[str] = None
-    
-    # Celery Configuration
-    celery_broker_url: str = "redis://localhost:6379/0"
-    celery_result_backend: str = "redis://localhost:6379/1"
     
     # API Configuration
     api_host: str = "0.0.0.0"
@@ -80,13 +75,30 @@ class Settings(BaseModel):
         return [key.strip() for key in self.api_keys.split(',') if key.strip()]
     
     def get_redis_url(self) -> str:
-        """Get complete Redis URL with password if provided"""
-        if self.redis_password:
-            # Parse URL and add password
-            url_parts = self.redis_url.split('://')
-            if len(url_parts) == 2:
-                return f"{url_parts[0]}://:{self.redis_password}@{url_parts[1]}"
+        """Get complete Redis URL (same as redis_url since it's already complete)"""
         return self.redis_url
+    
+    def get_celery_broker_url(self) -> str:
+        """Get Celery broker URL (Redis DB 0)"""
+        return self._get_redis_url_with_db(0)
+    
+    def get_celery_result_backend(self) -> str:
+        """Get Celery result backend URL (Redis DB 1)"""
+        return self._get_redis_url_with_db(1)
+    
+    def _get_redis_url_with_db(self, db: int) -> str:
+        """Get Redis URL with specified database number"""
+        url = self.redis_url
+        # Parse the URL to replace the database number
+        if url.startswith('redis://'):
+            # Split by '/' to get the database part
+            parts = url.split('/')
+            if len(parts) >= 4:  # redis://user:pass@host:port/db
+                parts[-1] = str(db)  # Replace the database number
+                return '/'.join(parts)
+            else:  # redis://host:port (no db specified)
+                return f"{url}/{db}"
+        return url
     
     model_config = ConfigDict(
         case_sensitive=False,
@@ -97,9 +109,6 @@ class Settings(BaseModel):
 # Global settings instance with environment variable loading
 settings = Settings(
     redis_url=os.getenv("REDIS_URL", "redis://localhost:6379/0"),
-    redis_password=os.getenv("REDIS_PASSWORD"),
-    celery_broker_url=os.getenv("CELERY_BROKER_URL", "redis://localhost:6379/0"),
-    celery_result_backend=os.getenv("CELERY_RESULT_BACKEND", "redis://localhost:6379/1"),
     api_host=os.getenv("API_HOST", "0.0.0.0"),
     api_port=int(os.getenv("API_PORT", "8001")),
     api_workers=int(os.getenv("API_WORKERS", "4")),
@@ -129,22 +138,30 @@ settings = Settings(
 
 
 # Redis connection configuration
-REDIS_CONFIG = {
-    "host": "localhost",
-    "port": 6379,
-    "db": 0,
-    "password": settings.redis_password,
-    "decode_responses": True,
-    "socket_timeout": 5,
-    "socket_connect_timeout": 5,
-    "retry_on_timeout": True,
-}
+# Parse Redis URL to extract connection parameters
+def _parse_redis_config():
+    """Parse Redis URL to extract connection parameters"""
+    from urllib.parse import urlparse
+    parsed = urlparse(settings.redis_url)
+    
+    return {
+        "host": parsed.hostname or "localhost",
+        "port": parsed.port or 6379,
+        "db": int(parsed.path.lstrip('/')) if parsed.path else 0,
+        "password": parsed.password,
+        "decode_responses": True,
+        "socket_timeout": 5,
+        "socket_connect_timeout": 5,
+        "retry_on_timeout": True,
+    }
+
+REDIS_CONFIG = _parse_redis_config()
 
 
 # Celery configuration
 CELERY_CONFIG = {
-    "broker_url": settings.celery_broker_url,
-    "result_backend": settings.celery_result_backend,
+    "broker_url": settings.get_celery_broker_url(),
+    "result_backend": settings.get_celery_result_backend(),
     "task_serializer": "json",
     "accept_content": ["json"],
     "result_serializer": "json",

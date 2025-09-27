@@ -25,7 +25,7 @@ SERVICE_REGISTRY: Dict[Environment, Dict[str, str]] = {
         # Database services
         # "neo4j_http": "http://localhost:7474",  # Now accessed via brain service
         # "neo4j_bolt": "bolt://localhost:7687",   # Now accessed via brain service
-        "redis": "redis://localhost:6379/0",
+        "redis": "redis://default:8XTmX6Zbo1iNV6ZHvsvUQfKxssr2EmGTemAaqq2G4ZTc2BJky11MAnwQaKU879pI@zs0gg4csc00k800kwgc84gcg:6379/0",
         "mongodb": "mongodb://localhost:27017",
         
         # Monitoring services

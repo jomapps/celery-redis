@@ -14,7 +14,7 @@ echo Redis is running!
 
 REM Set environment variables
 set API_KEY=test-api-key
-set REDIS_URL=redis://localhost:6379/0
+set REDIS_URL=redis://default:8XTmX6Zbo1iNV6ZHvsvUQfKxssr2EmGTemAaqq2G4ZTc2BJky11MAnwQaKU879pI@zs0gg4csc00k800kwgc84gcg:6379/0
 set ENVIRONMENT=development
 set DEBUG=true
 

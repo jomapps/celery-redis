@@ -472,13 +472,9 @@ class ProjectIsolatedTask(Task):
 
 ```bash
 # .env
-# Redis Configuration
-REDIS_URL=redis://localhost:6379/0
-REDIS_PASSWORD=your_redis_password
-
-# Celery Configuration  
-CELERY_BROKER_URL=redis://localhost:6379/0
-CELERY_RESULT_BACKEND=redis://localhost:6379/1
+# Redis Configuration - Single URL for all Redis needs
+# The application will automatically derive Celery broker (db=0) and result backend (db=1) from this URL
+REDIS_URL=redis://default:password@your-redis-host:6379/0
 
 # GPU Configuration
 CUDA_VISIBLE_DEVICES=0,1,2,3
@@ -521,8 +517,8 @@ from .config import settings
 celery_app = Celery("ai_movie_tasks")
 
 celery_app.conf.update(
-    broker_url=settings.CELERY_BROKER_URL,
-    result_backend=settings.CELERY_RESULT_BACKEND,
+    broker_url=settings.get_celery_broker_url(),
+    result_backend=settings.get_celery_result_backend(),
     
     # Task routing by project
     task_routes={
