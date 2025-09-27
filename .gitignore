@@ -8,3 +8,4 @@
 .qoder/rules/byterover-rules.md
 .augment/rules/byterover-rules.md
 node_modules
+.env
