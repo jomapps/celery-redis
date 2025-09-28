@@ -10,15 +10,6 @@ from .base_task import BaseTaskWithBrain
 logger = structlog.get_logger(__name__)
 
 
-@celery_app.task(bind=True, base=BaseTaskWithBrain, queue='cpu_intensive')
-def process_audio_generation(self, project_id: str, audio_prompt: str,
-                           audio_params: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Generate audio content with brain service knowledge integration
-    """
-    return self.execute_task(project_id, audio_prompt, audio_params)
-
-
 class AudioGenerationTask(BaseTaskWithBrain):
     """Audio generation task with brain service integration"""
 
@@ -95,15 +86,6 @@ class AudioGenerationTask(BaseTaskWithBrain):
             raise
 
 
-@celery_app.task(bind=True, base=BaseTaskWithBrain, queue='cpu_intensive')
-def process_audio_editing(self, project_id: str, source_audio_url: str,
-                        edit_instructions: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Edit and enhance existing audio content
-    """
-    return AudioEditingTask().execute_task(project_id, source_audio_url, edit_instructions)
-
-
 class AudioEditingTask(BaseTaskWithBrain):
     """Audio editing task with brain service integration"""
 
@@ -167,14 +149,6 @@ class AudioEditingTask(BaseTaskWithBrain):
                         task_id=self.request.id,
                         error=str(e))
             raise
-
-
-@celery_app.task(bind=True, base=BaseTaskWithBrain, queue='cpu_intensive')
-def process_audio_synthesis(self, project_id: str, synthesis_config: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Synthesize complex audio compositions with brain service optimization
-    """
-    return AudioSynthesisTask().execute_task(project_id, synthesis_config)
 
 
 class AudioSynthesisTask(BaseTaskWithBrain):
@@ -264,7 +238,22 @@ class AudioSynthesisTask(BaseTaskWithBrain):
             raise
 
 
-# Register the concrete task implementations
-process_audio_generation.__class__ = AudioGenerationTask
-process_audio_editing.__class__ = AudioEditingTask
-process_audio_synthesis.__class__ = AudioSynthesisTask
+# Create Celery task instances using the concrete classes
+@celery_app.task(bind=True, base=AudioGenerationTask, queue='cpu_intensive')
+def process_audio_generation(self, project_id: str, audio_prompt: str,
+                           audio_params: Dict[str, Any]) -> Dict[str, Any]:
+    """Generate audio content with brain service knowledge integration"""
+    return self.execute_task(project_id, audio_prompt, audio_params)
+
+
+@celery_app.task(bind=True, base=AudioEditingTask, queue='cpu_intensive')
+def process_audio_editing(self, project_id: str, source_audio_url: str,
+                        edit_instructions: Dict[str, Any]) -> Dict[str, Any]:
+    """Edit and enhance existing audio content"""
+    return self.execute_task(project_id, source_audio_url, edit_instructions)
+
+
+@celery_app.task(bind=True, base=AudioSynthesisTask, queue='cpu_intensive')
+def process_audio_synthesis(self, project_id: str, synthesis_config: Dict[str, Any]) -> Dict[str, Any]:
+    """Synthesize complex audio compositions with brain service optimization"""
+    return self.execute_task(project_id, synthesis_config)

@@ -10,15 +10,6 @@ from .base_task import BaseTaskWithBrain
 logger = structlog.get_logger(__name__)
 
 
-@celery_app.task(bind=True, base=BaseTaskWithBrain, queue='gpu_heavy')
-def process_video_generation(self, project_id: str, scene_data: Dict[str, Any],
-                           video_params: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Generate video content with brain service knowledge integration
-    """
-    return self.execute_task(project_id, scene_data, video_params)
-
-
 class VideoGenerationTask(BaseTaskWithBrain):
     """Video generation task with brain service integration"""
 
@@ -90,16 +81,9 @@ class VideoGenerationTask(BaseTaskWithBrain):
             raise
 
 
-@celery_app.task(bind=True, base=BaseTaskWithBrain, queue='gpu_medium')
-def process_video_editing(self, project_id: str, edit_instructions: Dict[str, Any],
-                        source_videos: list) -> Dict[str, Any]:
-    """
-    Edit and process existing video content
-    """
-    return VideoEditingTask().execute_task(project_id, edit_instructions, source_videos)
-
-
 class VideoEditingTask(BaseTaskWithBrain):
+
+
     """Video editing task with brain service integration"""
 
     def execute_task(self, project_id: str, edit_instructions: Dict[str, Any],
@@ -169,6 +153,16 @@ class VideoEditingTask(BaseTaskWithBrain):
             raise
 
 
-# Register the concrete task implementations
-process_video_generation.__class__ = VideoGenerationTask
-process_video_editing.__class__ = VideoEditingTask
+# Create Celery task instances using the concrete classes
+@celery_app.task(bind=True, base=VideoGenerationTask, queue='gpu_heavy')
+def process_video_generation(self, project_id: str, scene_data: Dict[str, Any],
+                           video_params: Dict[str, Any]) -> Dict[str, Any]:
+    """Generate video content with brain service knowledge integration"""
+    return self.execute_task(project_id, scene_data, video_params)
+
+
+@celery_app.task(bind=True, base=VideoEditingTask, queue='gpu_medium')
+def process_video_editing(self, project_id: str, edit_instructions: Dict[str, Any],
+                        source_videos: list) -> Dict[str, Any]:
+    """Edit and process existing video content"""
+    return self.execute_task(project_id, edit_instructions, source_videos)

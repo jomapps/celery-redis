@@ -4,6 +4,7 @@ Follows constitutional requirements for API design and security
 """
 from datetime import datetime
 from uuid import uuid4
+import uuid
 from fastapi import APIRouter, Depends, HTTPException, Path
 from typing import Dict, Any
 import structlog
@@ -13,6 +14,7 @@ from ..models.task import (
     TaskSubmissionResponse,
     TaskStatusResponse,
     TaskStatus,
+    TaskType,
     Task
 )
 from ..middleware.auth import verify_api_key, validate_task_id
@@ -61,19 +63,19 @@ async def submit_task(
     # Submit task to appropriate Celery queue based on task type
     task_result = None
 
-    if task_request.task_type == "video_generation":
+    if task_request.task_type == TaskType.GENERATE_VIDEO:
         task_result = process_video_generation.delay(
             project_id=task_request.project_id,
             scene_data=task_request.task_data.get('scene_data', {}),
             video_params=task_request.task_data.get('video_params', {})
         )
-    elif task_request.task_type == "image_generation":
+    elif task_request.task_type == TaskType.GENERATE_IMAGE:
         task_result = process_image_generation.delay(
             project_id=task_request.project_id,
             image_prompt=task_request.task_data.get('prompt', ''),
             image_params=task_request.task_data.get('image_params', {})
         )
-    elif task_request.task_type == "audio_generation":
+    elif task_request.task_type == TaskType.PROCESS_AUDIO:
         task_result = process_audio_generation.delay(
             project_id=task_request.project_id,
             audio_prompt=task_request.task_data.get('prompt', ''),

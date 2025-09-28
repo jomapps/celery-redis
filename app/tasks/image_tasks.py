@@ -10,15 +10,6 @@ from .base_task import BaseTaskWithBrain
 logger = structlog.get_logger(__name__)
 
 
-@celery_app.task(bind=True, base=BaseTaskWithBrain, queue='gpu_medium')
-def process_image_generation(self, project_id: str, image_prompt: str,
-                           image_params: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Generate images with brain service knowledge integration
-    """
-    return self.execute_task(project_id, image_prompt, image_params)
-
-
 class ImageGenerationTask(BaseTaskWithBrain):
     """Image generation task with brain service integration"""
 
@@ -94,15 +85,6 @@ class ImageGenerationTask(BaseTaskWithBrain):
             raise
 
 
-@celery_app.task(bind=True, base=BaseTaskWithBrain, queue='cpu_intensive')
-def process_image_editing(self, project_id: str, source_image_url: str,
-                        edit_instructions: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Edit and enhance existing images
-    """
-    return ImageEditingTask().execute_task(project_id, source_image_url, edit_instructions)
-
-
 class ImageEditingTask(BaseTaskWithBrain):
     """Image editing task with brain service integration"""
 
@@ -165,14 +147,6 @@ class ImageEditingTask(BaseTaskWithBrain):
                         task_id=self.request.id,
                         error=str(e))
             raise
-
-
-@celery_app.task(bind=True, base=BaseTaskWithBrain, queue='cpu_intensive')
-def process_image_batch(self, project_id: str, image_requests: List[Dict[str, Any]]) -> Dict[str, Any]:
-    """
-    Process multiple images in batch with brain service optimization
-    """
-    return ImageBatchTask().execute_task(project_id, image_requests)
 
 
 class ImageBatchTask(BaseTaskWithBrain):
@@ -267,7 +241,22 @@ class ImageBatchTask(BaseTaskWithBrain):
             raise
 
 
-# Register the concrete task implementations
-process_image_generation.__class__ = ImageGenerationTask
-process_image_editing.__class__ = ImageEditingTask
-process_image_batch.__class__ = ImageBatchTask
+# Create Celery task instances using the concrete classes
+@celery_app.task(bind=True, base=ImageGenerationTask, queue='gpu_medium')
+def process_image_generation(self, project_id: str, image_prompt: str,
+                           image_params: Dict[str, Any]) -> Dict[str, Any]:
+    """Generate images with brain service knowledge integration"""
+    return self.execute_task(project_id, image_prompt, image_params)
+
+
+@celery_app.task(bind=True, base=ImageEditingTask, queue='cpu_intensive')
+def process_image_editing(self, project_id: str, source_image_url: str,
+                        edit_instructions: Dict[str, Any]) -> Dict[str, Any]:
+    """Edit and enhance existing images"""
+    return self.execute_task(project_id, source_image_url, edit_instructions)
+
+
+@celery_app.task(bind=True, base=ImageBatchTask, queue='cpu_intensive')
+def process_image_batch(self, project_id: str, image_requests: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Process multiple images in batch with brain service optimization"""
+    return self.execute_task(project_id, image_requests)
