@@ -91,6 +91,11 @@ async def health_check():
     }
 
 
+@app.get("/health")
+async def root_health():
+    return await health_check()
+
+
 # Import and include API routers (will be implemented in later tasks)
 try:
     from .api import tasks, projects, workers
