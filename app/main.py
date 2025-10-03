@@ -87,6 +87,7 @@ async def health_check():
     """Health check endpoint for service monitoring"""
     return {
         "status": "healthy",
+        "app": "AI Movie Platform - Task Service API",
         "timestamp": datetime.utcnow().isoformat() + "Z"
     }
 
