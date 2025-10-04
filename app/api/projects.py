@@ -7,6 +7,7 @@ import structlog
 
 from ..models.project import ProjectTasksRequest, ProjectTasksResponse, ProjectTasksSummary
 from ..middleware.auth import verify_api_key, validate_project_id
+from ..storage import task_storage
 
 logger = structlog.get_logger()
 router = APIRouter()
@@ -44,17 +45,41 @@ async def get_project_tasks(
         page=page,
         limit=limit
     )
-    
-    # TODO: Retrieve tasks from Redis with project isolation
-    # TODO: Apply filters and pagination
-    
-    # Return empty result for now
+
+    # Calculate offset for pagination
+    offset = (page - 1) * limit
+
+    # Retrieve tasks from storage
+    tasks = task_storage.get_project_tasks(
+        project_id=validated_project_id,
+        status=status,
+        task_type=task_type,
+        limit=limit,
+        offset=offset
+    )
+
+    # Get total count for pagination
+    total = task_storage.get_project_tasks_count(
+        project_id=validated_project_id,
+        status=status,
+        task_type=task_type
+    )
+
+    total_pages = (total + limit - 1) // limit if total > 0 else 0
+
+    logger.info(
+        "Project tasks retrieved",
+        project_id=validated_project_id,
+        count=len(tasks),
+        total=total
+    )
+
     return ProjectTasksResponse(
-        tasks=[],
+        tasks=tasks,
         pagination={
             "page": page,
             "limit": limit,
-            "total": 0,
-            "total_pages": 0
+            "total": total,
+            "total_pages": total_pages
         }
     )

@@ -27,6 +27,7 @@ from ..tasks import (
 from ..clients.brain_client import BrainServiceClient
 from ..config.settings import settings
 from ..config.monitoring import get_task_metrics, check_task_health
+from ..storage import task_storage
 
 logger = structlog.get_logger()
 router = APIRouter()
@@ -114,16 +115,23 @@ async def submit_task(
     if task_result:
         task.task_id = uuid.UUID(task_result.id)
         task.status = TaskStatus.PROCESSING
-    
+
+    # Save task to storage
+    task_storage.save_task(task)
+
+    # Increment metrics
+    task_storage.increment_metric("total_tasks")
+
     logger.info(
         "Task submitted successfully",
-        task_id=str(task_id),
+        task_id=str(task.task_id),
+        celery_task_id=task_result.id if task_result else None,
         project_id=task_request.project_id
     )
-    
+
     return TaskSubmissionResponse(
-        task_id=task_id,
-        status=TaskStatus.QUEUED,
+        task_id=task.task_id,
+        status=task.status,
         project_id=task_request.project_id,
         estimated_duration=task.estimated_duration,
         queue_position=task.queue_position,
@@ -430,7 +438,24 @@ async def get_metrics(
     """
     logger.info("Task metrics requested")
 
-    metrics = get_task_metrics()
+    # Get metrics from Redis storage
+    redis_metrics = task_storage.get_metrics()
+
+    total_tasks = redis_metrics.get("total_tasks", 0)
+    completed_tasks = redis_metrics.get("completed_tasks", 0)
+    failed_tasks = redis_metrics.get("failed_tasks", 0)
+
+    metrics = {
+        "total_tasks": total_tasks,
+        "completed_tasks": completed_tasks,
+        "failed_tasks": failed_tasks,
+        "retried_tasks": redis_metrics.get("retried_tasks", 0),
+        "cancelled_tasks": redis_metrics.get("cancelled_tasks", 0),
+        "success_rate": (completed_tasks / total_tasks * 100) if total_tasks > 0 else 0,
+        "failure_rate": (failed_tasks / total_tasks * 100) if total_tasks > 0 else 0,
+        "average_durations": {},
+        "currently_running": redis_metrics.get("currently_running", 0)
+    }
 
     return {
         "metrics": metrics,

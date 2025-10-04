@@ -17,6 +17,7 @@ from ..utils.webhook import (
     build_success_webhook_payload,
     build_failure_webhook_payload
 )
+from ..storage import task_storage
 
 logger = structlog.get_logger(__name__)
 
@@ -192,6 +193,16 @@ class BaseTaskWithBrain(Task, ABC):
                 "traceback": str(einfo.traceback)
             }
 
+            # Update task status in storage
+            task_storage.update_task_status(
+                task_id=task_id,
+                status="failed",
+                error=str(exc)
+            )
+
+            # Increment failure metrics
+            task_storage.increment_metric("failed_tasks")
+
             # Store failure context asynchronously
             self.run_async_in_sync(
                 self.store_task_context_in_brain(task_id, failure_context)
@@ -230,6 +241,16 @@ class BaseTaskWithBrain(Task, ABC):
                 "execution_args": args,
                 "execution_kwargs": kwargs
             }
+
+            # Update task status in storage
+            task_storage.update_task_status(
+                task_id=task_id,
+                status="completed",
+                result=retval if isinstance(retval, dict) else {"result": retval}
+            )
+
+            # Increment completion metrics
+            task_storage.increment_metric("completed_tasks")
 
             # Store success context asynchronously
             self.run_async_in_sync(
