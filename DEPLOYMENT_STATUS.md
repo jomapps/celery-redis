@@ -107,6 +107,34 @@ redis-cli ping
 # Response: PONG
 ```
 
+### 5. End-to-End Task Processing ✅ VERIFIED
+**Test performed**: 2025-10-04 10:31:56 UTC
+
+```bash
+# Submitted test task
+curl -X POST https://tasks.ft.tc/api/v1/tasks/submit \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: ae6e18cb408bc7128f23585casdlaelwlekoqdsldsa" \
+  -d '{"project_id":"68df4dab400c86a6a8cf40c6","task_type":"evaluate_department",...}'
+
+# Response: task_id: 91f5b906-269d-41aa-926e-c4134092f707, status: processing
+
+# After 10 seconds - Task appeared in project tasks
+curl -H "X-API-Key: ..." "https://tasks.ft.tc/api/v1/projects/68df4dab400c86a6a8cf40c6/tasks"
+# Response: 1 task found, status: completed
+
+# Metrics updated correctly
+curl -H "X-API-Key: ..." "https://tasks.ft.tc/api/v1/tasks/metrics"
+# Response: total_tasks: 1, completed_tasks: 1, success_rate: 100%
+```
+
+**Result**: ✅ **COMPLETE END-TO-END FLOW WORKING**
+- Task submitted successfully
+- Worker received and processed task
+- Task status updated in Redis storage
+- Task appears in project tasks list
+- Metrics incremented correctly
+
 ---
 
 ## Testing Instructions for Main App Team
