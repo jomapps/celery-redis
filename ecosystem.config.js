@@ -22,7 +22,7 @@ module.exports = {
       name: 'celery-worker',
       cwd: '/var/www/celery-redis',
       script: 'venv/bin/celery',
-      args: '-A app.celery_app worker --loglevel=info --concurrency=4',
+      args: '-A app.celery_app worker --loglevel=info --concurrency=4 --queues=celery,cpu_intensive,gpu_heavy,gpu_medium --hostname=celery-redis-worker@%h',
       interpreter: 'none',
       instances: 1,
       autorestart: true,
