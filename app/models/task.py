@@ -16,6 +16,7 @@ class TaskType(str, Enum):
     PROCESS_AUDIO = "process_audio"
     RENDER_ANIMATION = "render_animation"
     TEST_PROMPT = "test_prompt"  # For Auto-Movie App prompt testing integration
+    EVALUATE_DEPARTMENT = "evaluate_department"  # For Aladdin project readiness evaluation
 
 
 class TaskStatus(str, Enum):

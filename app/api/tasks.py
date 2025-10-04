@@ -18,7 +18,12 @@ from ..models.task import (
     Task
 )
 from ..middleware.auth import verify_api_key, validate_task_id
-from ..tasks import process_video_generation, process_image_generation, process_audio_generation
+from ..tasks import (
+    process_video_generation,
+    process_image_generation,
+    process_audio_generation,
+    evaluate_department
+)
 from ..clients.brain_client import BrainServiceClient
 from ..config.settings import settings
 
@@ -84,6 +89,17 @@ async def submit_task(
             project_id=task_request.project_id,
             audio_prompt=task_request.task_data.get('prompt', ''),
             audio_params=task_request.task_data.get('audio_params', {}),
+            callback_url=task_request.callback_url,
+            metadata=task_request.metadata
+        )
+    elif task_request.task_type == TaskType.EVALUATE_DEPARTMENT:
+        task_result = evaluate_department.delay(
+            project_id=task_request.project_id,
+            department_slug=task_request.task_data.get('department_slug'),
+            department_number=task_request.task_data.get('department_number'),
+            gather_data=task_request.task_data.get('gather_data', []),
+            previous_evaluations=task_request.task_data.get('previous_evaluations', []),
+            threshold=task_request.task_data.get('threshold', 80),
             callback_url=task_request.callback_url,
             metadata=task_request.metadata
         )
