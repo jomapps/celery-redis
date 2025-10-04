@@ -1633,4 +1633,174 @@ Include these details when reporting issues:
 | Prompt Testing | 5-15 seconds | 1 minute |
 | Department Evaluation | 30-120 seconds | 5 minutes |
 
+---
+
+## Troubleshooting
+
+### Service Returns 404 for `/api/v1/tasks/submit`
+
+**Symptom**: The task submission endpoint returns `404 Not Found` even though the service is running and health checks pass.
+
+**Root Cause**: Missing Python dependencies in the virtual environment causing silent import failures. The FastAPI routers fail to load due to `ImportError`, which is caught by the try-except block in `app/main.py` (lines 101-111).
+
+**Diagnosis**:
+```bash
+# Check if routers are loaded in OpenAPI schema
+curl -s https://tasks.ft.tc/openapi.json | python3 -c "import sys, json; data = json.load(sys.stdin); print('Available paths:'); [print(f'  {path}') for path in sorted(data['paths'].keys())]"
+
+# If only /health and /api/v1/health are shown, routers are not loaded
+
+# Test imports directly
+cd /var/www/celery-redis
+/var/www/celery-redis/venv/bin/python -c "from app.api import tasks, projects, workers; print('SUCCESS')"
+```
+
+**Solution**:
+```bash
+# 1. Identify missing dependencies
+cd /var/www/celery-redis
+/var/www/celery-redis/venv/bin/python -c "from app.api import tasks"
+# Look for ModuleNotFoundError in output
+
+# 2. Install missing dependencies
+/var/www/celery-redis/venv/bin/pip install -r requirements.txt
+
+# Or install specific missing package
+/var/www/celery-redis/venv/bin/pip install requests==2.31.0
+
+# 3. Verify imports work
+/var/www/celery-redis/venv/bin/python -c "from app.api import tasks; print('Routes:', [r.path for r in tasks.router.routes])"
+
+# 4. Restart the service
+pm2 restart celery-redis-api
+
+# 5. Verify endpoint is now available
+curl -X POST https://tasks.ft.tc/api/v1/tasks/submit \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: your-api-key" \
+  -d '{"project_id":"test","task_type":"evaluate_department","task_data":{"department_slug":"story","department_number":1,"gather_data":[],"threshold":80}}'
+```
+
+**Prevention**:
+- Always run `pip install -r requirements.txt` after pulling code changes
+- Check PM2 logs for import errors: `pm2 logs celery-redis-api --lines 100`
+- Monitor the OpenAPI schema to ensure all expected endpoints are registered
+- Consider adding a startup health check that verifies all routers are loaded
+
+### Tasks Stuck in "Queued" Status
+
+**Symptom**: Tasks are submitted successfully but never start processing.
+
+**Diagnosis**:
+```bash
+# Check if Celery workers are running
+pm2 list | grep celery-worker
+
+# Check worker logs
+pm2 logs celery-worker --lines 50
+
+# Check Redis connection
+redis-cli ping
+
+# Check task queue size
+redis-cli llen celery
+```
+
+**Solution**:
+```bash
+# Restart Celery worker
+pm2 restart celery-worker
+
+# If Redis is down, restart it
+sudo systemctl restart redis-server
+```
+
+### 401 Unauthorized Errors
+
+**Symptom**: All API requests return `401 Unauthorized`.
+
+**Diagnosis**:
+```bash
+# Check if API key is set correctly
+echo $CELERY_API_KEY
+
+# Verify API key in .env file
+grep API_KEY /var/www/celery-redis/.env
+```
+
+**Solution**:
+```bash
+# Use the correct API key from .env file
+API_KEY=$(grep "^API_KEY=" /var/www/celery-redis/.env | cut -d'=' -f2)
+
+# Test with correct key
+curl -H "X-API-Key: $API_KEY" https://tasks.ft.tc/api/v1/health
+```
+
+### Service Not Responding
+
+**Symptom**: Service is not responding to any requests.
+
+**Diagnosis**:
+```bash
+# Check if service is running
+pm2 list | grep celery-redis-api
+
+# Check service logs
+pm2 logs celery-redis-api --lines 100
+
+# Check if port is listening
+netstat -tlnp | grep 8001
+```
+
+**Solution**:
+```bash
+# Restart the service
+pm2 restart celery-redis-api
+
+# If that doesn't work, check for port conflicts
+sudo lsof -i :8001
+
+# Check nginx configuration
+sudo nginx -t
+sudo systemctl restart nginx
+```
+
+### Checking Service Health
+
+**Quick Health Check**:
+```bash
+# Basic health check
+curl https://tasks.ft.tc/health
+
+# Detailed health check (requires API key)
+curl -H "X-API-Key: $API_KEY" https://tasks.ft.tc/api/v1/tasks/health
+
+# Check metrics
+curl -H "X-API-Key: $API_KEY" https://tasks.ft.tc/api/v1/tasks/metrics
+```
+
+### Viewing Logs
+
+**PM2 Logs**:
+```bash
+# View API logs
+pm2 logs celery-redis-api
+
+# View worker logs
+pm2 logs celery-worker
+
+# View last 100 lines
+pm2 logs celery-redis-api --lines 100
+
+# View errors only
+pm2 logs celery-redis-api --err
+```
+
+**Log Locations**:
+- API logs: `/var/log/celery-redis-api-out-*.log` and `/var/log/celery-redis-api-error-*.log`
+- Worker logs: `/var/log/celery-worker-out-*.log` and `/var/log/celery-worker-error-*.log`
+
+---
+
 This service handles all the heavy computational work so your applications can focus on user experience and workflow management!
