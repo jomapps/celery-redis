@@ -241,7 +241,8 @@ class AudioSynthesisTask(BaseTaskWithBrain):
 # Create Celery task instances using the concrete classes
 @celery_app.task(bind=True, base=AudioGenerationTask, queue='cpu_intensive')
 def process_audio_generation(self, project_id: str, audio_prompt: str,
-                           audio_params: Dict[str, Any]) -> Dict[str, Any]:
+                           audio_params: Dict[str, Any], callback_url: str = None,
+                           metadata: Dict[str, Any] = None) -> Dict[str, Any]:
     """Generate audio content with brain service knowledge integration"""
     return self.execute_task(project_id, audio_prompt, audio_params)
 

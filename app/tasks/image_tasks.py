@@ -244,7 +244,8 @@ class ImageBatchTask(BaseTaskWithBrain):
 # Create Celery task instances using the concrete classes
 @celery_app.task(bind=True, base=ImageGenerationTask, queue='gpu_medium')
 def process_image_generation(self, project_id: str, image_prompt: str,
-                           image_params: Dict[str, Any]) -> Dict[str, Any]:
+                           image_params: Dict[str, Any], callback_url: str = None,
+                           metadata: Dict[str, Any] = None) -> Dict[str, Any]:
     """Generate images with brain service knowledge integration"""
     return self.execute_task(project_id, image_prompt, image_params)
 

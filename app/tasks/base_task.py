@@ -12,6 +12,11 @@ from celery.exceptions import Retry
 
 from ..clients.brain_client import BrainServiceClient, BrainServiceConnectionError
 from ..config.settings import settings
+from ..utils.webhook import (
+    send_webhook_sync,
+    build_success_webhook_payload,
+    build_failure_webhook_payload
+)
 
 logger = structlog.get_logger(__name__)
 
@@ -176,7 +181,7 @@ class BaseTaskWithBrain(Task, ABC):
         return loop.run_until_complete(coro)
 
     def on_failure(self, exc, task_id, args, kwargs, einfo):
-        """Called when task fails - store failure information in brain service"""
+        """Called when task fails - store failure information in brain service and send webhook"""
         try:
             failure_context = {
                 "error": str(exc),
@@ -192,12 +197,31 @@ class BaseTaskWithBrain(Task, ABC):
                 self.store_task_context_in_brain(task_id, failure_context)
             )
 
+            # Send webhook callback if callback_url was provided
+            callback_url = kwargs.get('callback_url')
+            if callback_url:
+                project_id = kwargs.get('project_id', 'unknown')
+
+                # Extract metadata if provided
+                metadata = kwargs.get('metadata', {})
+
+                webhook_payload = build_failure_webhook_payload(
+                    task_id=task_id,
+                    project_id=project_id,
+                    error=str(exc),
+                    traceback=str(einfo.traceback),
+                    metadata=metadata
+                )
+
+                # Send webhook synchronously (with retries)
+                send_webhook_sync(callback_url, webhook_payload)
+
         except Exception as e:
             logger.error("Failed to store task failure in brain service",
                         task_id=task_id, error=str(e))
 
     def on_success(self, retval, task_id, args, kwargs):
-        """Called when task succeeds - store success information in brain service"""
+        """Called when task succeeds - store success information in brain service and send webhook"""
         try:
             success_context = {
                 "task_id": task_id,
@@ -211,6 +235,26 @@ class BaseTaskWithBrain(Task, ABC):
             self.run_async_in_sync(
                 self.store_task_context_in_brain(task_id, success_context)
             )
+
+            # Send webhook callback if callback_url was provided
+            callback_url = kwargs.get('callback_url')
+            if callback_url:
+                project_id = kwargs.get('project_id', 'unknown')
+
+                # Extract metadata and processing time if available
+                metadata = kwargs.get('metadata', {})
+                processing_time = kwargs.get('processing_time')
+
+                webhook_payload = build_success_webhook_payload(
+                    task_id=task_id,
+                    project_id=project_id,
+                    result=retval if isinstance(retval, dict) else {"result": retval},
+                    processing_time=processing_time,
+                    metadata=metadata
+                )
+
+                # Send webhook synchronously (with retries)
+                send_webhook_sync(callback_url, webhook_payload)
 
         except Exception as e:
             logger.error("Failed to store task success in brain service",

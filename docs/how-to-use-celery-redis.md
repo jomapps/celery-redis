@@ -561,9 +561,45 @@ async function generateVideoWithRetry(sceneData: any, maxRetries = 3): Promise<a
 
 ## Webhook Integration
 
-If you provide a `callback_url` when submitting tasks, the service will POST results to your endpoint:
+The Task Service supports **automatic webhook callbacks** to notify your application when tasks complete. This eliminates the need for polling and provides real-time notifications.
 
-### Webhook Payload
+### Overview
+
+When you submit a task with a `callback_url`, the service will automatically POST to that URL when the task completes (successfully or with failure).
+
+**Features:**
+- ✅ Automatic delivery on task completion
+- ✅ Retry logic with exponential backoff (3 retries)
+- ✅ 30-second timeout per request
+- ✅ Support for both success and failure scenarios
+- ✅ Custom metadata passthrough
+- ✅ Standardized payload format
+
+### Submitting a Task with Callback
+
+```bash
+curl -X POST https://tasks.ft.tc/api/v1/tasks/submit \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: your-api-key" \
+  -d '{
+    "project_id": "detective_series_001",
+    "task_type": "generate_video",
+    "callback_url": "https://your-app.com/api/webhooks/task-complete",
+    "task_data": {
+      "scene_description": "Detective enters dark alley",
+      "duration": 7
+    },
+    "metadata": {
+      "userId": "user-123",
+      "testResultId": "result-456",
+      "sessionId": "session-789"
+    }
+  }'
+```
+
+### Success Webhook Payload
+
+When a task completes successfully:
 
 ```json
 {
@@ -572,58 +608,387 @@ If you provide a `callback_url` when submitting tasks, the service will POST res
   "status": "completed",
   "result": {
     "media_url": "https://media.ft.tc/detective_001/video_001.mp4",
-    "payload_media_id": "64f1b2c3a8d9e0f1"
+    "payload_media_id": "64f1b2c3a8d9e0f1",
+    "metadata": {
+      "duration": 7.0,
+      "resolution": "1920x1080",
+      "file_size": 15728640
+    }
   },
   "processing_time": 315,
-  "completed_at": "2025-01-15T10:35:30Z"
+  "completed_at": "2025-01-15T10:35:30Z",
+  "metadata": {
+    "userId": "user-123",
+    "testResultId": "result-456",
+    "sessionId": "session-789"
+  }
 }
 ```
 
-### Webhook Handler Example
+### Failure Webhook Payload
+
+When a task fails:
+
+```json
+{
+  "task_id": "abc123-def456-ghi789",
+  "project_id": "detective_series_001",
+  "status": "failed",
+  "error": "Task execution failed: Invalid scene description format",
+  "traceback": "Traceback (most recent call last):\n  File ...",
+  "failed_at": "2025-01-15T10:35:30Z",
+  "metadata": {
+    "userId": "user-123",
+    "testResultId": "result-456",
+    "sessionId": "session-789"
+  }
+}
+```
+
+### Webhook Handler Implementation
+
+#### Node.js/Express Example
 
 ```typescript
 // pages/api/webhooks/task-complete.ts
+import { NextApiRequest, NextApiResponse } from 'next'
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  // Only accept POST requests
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' })
   }
 
-  const { task_id, status, result, project_id } = req.body
+  const { task_id, status, result, error, project_id, metadata } = req.body
 
   try {
     if (status === 'completed') {
+      console.log(`✅ Task ${task_id} completed successfully`)
+
       // Update project with completed media
       await updateProjectMedia(project_id, {
         task_id,
         media_url: result.media_url,
-        payload_media_id: result.payload_media_id
+        payload_media_id: result.payload_media_id,
+        metadata: result.metadata
       })
-      
-      // Notify user via WebSocket
-      notifyUser(project_id, {
-        type: 'task_completed',
-        task_id,
-        result
-      })
-      
+
+      // Notify user via WebSocket or other real-time channel
+      if (metadata?.userId) {
+        await notifyUser(metadata.userId, {
+          type: 'task_completed',
+          task_id,
+          project_id,
+          result
+        })
+      }
+
+      // Update test result if applicable
+      if (metadata?.testResultId) {
+        await updateTestResult(metadata.testResultId, {
+          status: 'completed',
+          media_url: result.media_url
+        })
+      }
+
     } else if (status === 'failed') {
-      // Handle task failure
-      await logTaskFailure(task_id, result.error)
-      
-      notifyUser(project_id, {
-        type: 'task_failed',
-        task_id,
-        error: result.error
+      console.error(`❌ Task ${task_id} failed:`, error)
+
+      // Log task failure
+      await logTaskFailure(task_id, {
+        project_id,
+        error,
+        metadata
       })
+
+      // Notify user of failure
+      if (metadata?.userId) {
+        await notifyUser(metadata.userId, {
+          type: 'task_failed',
+          task_id,
+          project_id,
+          error
+        })
+      }
+
+      // Update test result with failure
+      if (metadata?.testResultId) {
+        await updateTestResult(metadata.testResultId, {
+          status: 'failed',
+          error
+        })
+      }
     }
 
+    // Always respond with 200 to acknowledge receipt
     res.status(200).json({ received: true })
+
   } catch (error) {
     console.error('Webhook processing error:', error)
     res.status(500).json({ error: 'Internal server error' })
   }
 }
 ```
+
+#### Python/FastAPI Example
+
+```python
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
+from typing import Optional, Dict, Any
+
+app = FastAPI()
+
+class WebhookPayload(BaseModel):
+    task_id: str
+    project_id: str
+    status: str
+    result: Optional[Dict[str, Any]] = None
+    error: Optional[str] = None
+    traceback: Optional[str] = None
+    processing_time: Optional[float] = None
+    completed_at: Optional[str] = None
+    failed_at: Optional[str] = None
+    metadata: Optional[Dict[str, Any]] = None
+
+@app.post("/api/webhooks/task-complete")
+async def handle_task_webhook(payload: WebhookPayload):
+    try:
+        if payload.status == "completed":
+            print(f"✅ Task {payload.task_id} completed successfully")
+
+            # Update database
+            await update_task_status(
+                task_id=payload.task_id,
+                status="completed",
+                result=payload.result,
+                processing_time=payload.processing_time
+            )
+
+            # Notify user
+            if payload.metadata and "userId" in payload.metadata:
+                await notify_user(
+                    user_id=payload.metadata["userId"],
+                    message={
+                        "type": "task_completed",
+                        "task_id": payload.task_id,
+                        "result": payload.result
+                    }
+                )
+
+        elif payload.status == "failed":
+            print(f"❌ Task {payload.task_id} failed: {payload.error}")
+
+            await update_task_status(
+                task_id=payload.task_id,
+                status="failed",
+                error=payload.error
+            )
+
+            if payload.metadata and "userId" in payload.metadata:
+                await notify_user(
+                    user_id=payload.metadata["userId"],
+                    message={
+                        "type": "task_failed",
+                        "task_id": payload.task_id,
+                        "error": payload.error
+                    }
+                )
+
+        return {"received": True}
+
+    except Exception as e:
+        print(f"Webhook processing error: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+```
+
+### Webhook Delivery Behavior
+
+#### Retry Logic
+
+The Task Service implements automatic retry with exponential backoff:
+
+1. **Initial attempt**: Immediate delivery after task completion
+2. **Retry 1**: After 1 second (if initial fails)
+3. **Retry 2**: After 2 seconds (if retry 1 fails)
+4. **Retry 3**: After 4 seconds (if retry 2 fails)
+
+**Total attempts**: 4 (1 initial + 3 retries)
+
+#### Success Criteria
+
+A webhook delivery is considered successful if your endpoint returns:
+- HTTP 200 (OK)
+- HTTP 201 (Created)
+- HTTP 202 (Accepted)
+- HTTP 204 (No Content)
+
+Any other status code will trigger a retry.
+
+#### Timeout
+
+Each webhook request has a **30-second timeout**. If your endpoint doesn't respond within this time, the request will be retried.
+
+#### Failure Handling
+
+If all retry attempts fail:
+- The task result is still stored in the brain service
+- An error is logged in the Task Service logs
+- You can still query the task status via `/api/v1/tasks/{task_id}/status`
+
+### Best Practices
+
+1. **Respond Quickly**: Acknowledge webhook receipt immediately (return 200), then process asynchronously
+   ```typescript
+   // Good: Immediate response
+   res.status(200).json({ received: true })
+   processWebhookAsync(payload) // Process in background
+
+   // Bad: Long processing before response
+   await longRunningProcess(payload)
+   res.status(200).json({ received: true })
+   ```
+
+2. **Idempotency**: Handle duplicate webhook deliveries gracefully
+   ```typescript
+   // Check if already processed
+   const existing = await db.webhooks.findOne({ task_id })
+   if (existing) {
+     return res.status(200).json({ received: true, duplicate: true })
+   }
+   ```
+
+3. **Error Handling**: Always return appropriate HTTP status codes
+   ```typescript
+   try {
+     await processWebhook(payload)
+     res.status(200).json({ received: true })
+   } catch (error) {
+     console.error('Error:', error)
+     res.status(500).json({ error: 'Processing failed' })
+   }
+   ```
+
+4. **Logging**: Log all webhook receipts for debugging
+   ```typescript
+   console.log(`Webhook received: ${task_id} - ${status}`)
+   ```
+
+5. **Security**: Validate webhook source (see Security section below)
+
+### Security Considerations
+
+#### IP Whitelisting (Recommended)
+
+```typescript
+const ALLOWED_IPS = [
+  '10.0.0.1',  // Task Service IP
+  '10.0.0.2'   // Backup Task Service IP
+]
+
+app.post('/api/webhooks/task-complete', (req, res, next) => {
+  const clientIP = req.ip || req.connection.remoteAddress
+
+  if (!ALLOWED_IPS.includes(clientIP)) {
+    return res.status(403).json({ error: 'Forbidden' })
+  }
+
+  next()
+}, handleWebhook)
+```
+
+#### HTTPS Only
+
+Always use HTTPS endpoints for webhook URLs:
+```json
+{
+  "callback_url": "https://your-app.com/api/webhooks/task-complete"
+}
+```
+
+#### Request Validation
+
+Validate the webhook payload structure:
+```typescript
+if (!task_id || !status || !project_id) {
+  return res.status(400).json({ error: 'Invalid payload' })
+}
+```
+
+### Testing Webhooks
+
+#### Using ngrok for Local Development
+
+```bash
+# Start ngrok to expose your local server
+ngrok http 3010
+
+# Use the ngrok URL as your callback_url
+# Example: https://abc123.ngrok.io/api/webhooks/task-complete
+```
+
+#### Mock Webhook Server
+
+```javascript
+const express = require('express')
+const app = express()
+
+app.post('/api/webhooks/task-complete', express.json(), (req, res) => {
+  console.log('Received webhook:', JSON.stringify(req.body, null, 2))
+  res.status(200).json({ received: true })
+})
+
+app.listen(3010, () => {
+  console.log('Mock webhook server running on port 3010')
+})
+```
+
+### Monitoring Webhooks
+
+#### Checking Logs
+
+```bash
+# View webhook delivery logs
+docker logs celery-redis-api-1 | grep "webhook"
+
+# View successful deliveries
+docker logs celery-redis-api-1 | grep "Webhook sent successfully"
+
+# View failed deliveries
+docker logs celery-redis-api-1 | grep "Failed to send webhook"
+```
+
+#### Log Examples
+
+**Success:**
+```
+INFO: Webhook sent successfully callback_url=https://... status_code=200 task_id=abc123
+```
+
+**Retry:**
+```
+WARNING: Webhook request failed callback_url=https://... error=Connection timeout attempt=1
+```
+
+**Failure:**
+```
+ERROR: Failed to send webhook after all retries callback_url=https://... task_id=abc123
+```
+
+### Common Issues
+
+| Issue | Cause | Solution |
+|-------|-------|----------|
+| Webhook not received | Callback URL not accessible | Verify URL is publicly accessible |
+| Timeout errors | Handler takes too long | Respond immediately, process async |
+| Duplicate webhooks | Retry after slow response | Implement idempotency check |
+| 403 Forbidden | IP whitelist blocking | Add Task Service IP to whitelist |
+
+### Additional Resources
+
+- [Complete Webhook Documentation](./webhook-callbacks.md)
+- [Webhook Example Script](../examples/webhook_example.py)
+- [System Integration Guide](./system-integration.md)
 
 ## Error Handling
 

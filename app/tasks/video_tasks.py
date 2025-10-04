@@ -156,7 +156,8 @@ class VideoEditingTask(BaseTaskWithBrain):
 # Create Celery task instances using the concrete classes
 @celery_app.task(bind=True, base=VideoGenerationTask, queue='gpu_heavy')
 def process_video_generation(self, project_id: str, scene_data: Dict[str, Any],
-                           video_params: Dict[str, Any]) -> Dict[str, Any]:
+                           video_params: Dict[str, Any], callback_url: str = None,
+                           metadata: Dict[str, Any] = None) -> Dict[str, Any]:
     """Generate video content with brain service knowledge integration"""
     return self.execute_task(project_id, scene_data, video_params)
 

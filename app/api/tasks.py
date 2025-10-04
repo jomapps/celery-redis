@@ -67,19 +67,25 @@ async def submit_task(
         task_result = process_video_generation.delay(
             project_id=task_request.project_id,
             scene_data=task_request.task_data.get('scene_data', {}),
-            video_params=task_request.task_data.get('video_params', {})
+            video_params=task_request.task_data.get('video_params', {}),
+            callback_url=task_request.callback_url,
+            metadata=task_request.metadata
         )
     elif task_request.task_type == TaskType.GENERATE_IMAGE:
         task_result = process_image_generation.delay(
             project_id=task_request.project_id,
             image_prompt=task_request.task_data.get('prompt', ''),
-            image_params=task_request.task_data.get('image_params', {})
+            image_params=task_request.task_data.get('image_params', {}),
+            callback_url=task_request.callback_url,
+            metadata=task_request.metadata
         )
     elif task_request.task_type == TaskType.PROCESS_AUDIO:
         task_result = process_audio_generation.delay(
             project_id=task_request.project_id,
             audio_prompt=task_request.task_data.get('prompt', ''),
-            audio_params=task_request.task_data.get('audio_params', {})
+            audio_params=task_request.task_data.get('audio_params', {}),
+            callback_url=task_request.callback_url,
+            metadata=task_request.metadata
         )
     else:
         raise HTTPException(
