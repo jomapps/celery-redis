@@ -26,6 +26,7 @@ from ..tasks import (
 )
 from ..clients.brain_client import BrainServiceClient
 from ..config.settings import settings
+from ..config.monitoring import get_task_metrics, check_task_health
 
 logger = structlog.get_logger()
 router = APIRouter()
@@ -249,3 +250,214 @@ async def retry_task(
         status_code=404,
         detail="Task not found"
     )
+
+
+@router.delete("/tasks/{task_id}", status_code=200)
+async def cancel_task(
+    task_id: str = Path(..., description="Task UUID to cancel"),
+    api_key: str = Depends(verify_api_key)
+) -> Dict[str, Any]:
+    """
+    Cancel a running or queued task
+
+    This endpoint revokes a task, preventing it from executing if queued,
+    or terminating it if currently running.
+
+    Args:
+        task_id: UUID of the task to cancel
+        api_key: API key for authentication
+
+    Returns:
+        Cancellation status and details
+
+    Raises:
+        HTTPException: If task_id is invalid or task cannot be cancelled
+    """
+    # Validate task ID format
+    validated_task_id = validate_task_id(task_id)
+
+    logger.info(
+        "Task cancellation requested",
+        task_id=validated_task_id
+    )
+
+    try:
+        from ..celery_app import celery_app
+
+        # Get task result to check current state
+        task_result = celery_app.AsyncResult(validated_task_id)
+
+        # Check if task exists and is cancellable
+        if task_result.state == 'PENDING':
+            # Task is queued, revoke it
+            celery_app.control.revoke(
+                validated_task_id,
+                terminate=False,  # Don't terminate if not started
+                signal='SIGTERM'
+            )
+
+            logger.info(
+                "Queued task revoked",
+                task_id=validated_task_id,
+                previous_state='PENDING'
+            )
+
+            return {
+                "task_id": validated_task_id,
+                "status": "cancelled",
+                "message": "Task was queued and has been revoked",
+                "previous_state": "queued",
+                "cancelled_at": datetime.utcnow().isoformat() + "Z"
+            }
+
+        elif task_result.state == 'STARTED':
+            # Task is running, terminate it
+            celery_app.control.revoke(
+                validated_task_id,
+                terminate=True,  # Terminate the running task
+                signal='SIGTERM'
+            )
+
+            logger.info(
+                "Running task terminated",
+                task_id=validated_task_id,
+                previous_state='STARTED'
+            )
+
+            return {
+                "task_id": validated_task_id,
+                "status": "cancelled",
+                "message": "Task was running and has been terminated",
+                "previous_state": "processing",
+                "cancelled_at": datetime.utcnow().isoformat() + "Z"
+            }
+
+        elif task_result.state == 'SUCCESS':
+            # Task already completed
+            logger.warning(
+                "Cannot cancel completed task",
+                task_id=validated_task_id,
+                state='SUCCESS'
+            )
+
+            raise HTTPException(
+                status_code=400,
+                detail="Task has already completed successfully and cannot be cancelled"
+            )
+
+        elif task_result.state == 'FAILURE':
+            # Task already failed
+            logger.warning(
+                "Cannot cancel failed task",
+                task_id=validated_task_id,
+                state='FAILURE'
+            )
+
+            raise HTTPException(
+                status_code=400,
+                detail="Task has already failed and cannot be cancelled"
+            )
+
+        elif task_result.state == 'REVOKED':
+            # Task already cancelled
+            logger.warning(
+                "Task already cancelled",
+                task_id=validated_task_id,
+                state='REVOKED'
+            )
+
+            return {
+                "task_id": validated_task_id,
+                "status": "cancelled",
+                "message": "Task was already cancelled",
+                "previous_state": "cancelled",
+                "cancelled_at": datetime.utcnow().isoformat() + "Z"
+            }
+
+        else:
+            # Unknown state, attempt revocation anyway
+            celery_app.control.revoke(
+                validated_task_id,
+                terminate=True,
+                signal='SIGTERM'
+            )
+
+            logger.warning(
+                "Task in unknown state, revoked anyway",
+                task_id=validated_task_id,
+                state=task_result.state
+            )
+
+            return {
+                "task_id": validated_task_id,
+                "status": "cancelled",
+                "message": f"Task in state '{task_result.state}' has been revoked",
+                "previous_state": task_result.state.lower(),
+                "cancelled_at": datetime.utcnow().isoformat() + "Z"
+            }
+
+    except Exception as e:
+        logger.error(
+            "Task cancellation failed",
+            task_id=validated_task_id,
+            error=str(e)
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to cancel task: {str(e)}"
+        )
+
+
+@router.get("/tasks/metrics", status_code=200)
+async def get_metrics(
+    api_key: str = Depends(verify_api_key)
+) -> Dict[str, Any]:
+    """
+    Get task queue metrics
+
+    Returns current metrics including:
+    - Total tasks processed
+    - Success/failure rates
+    - Average task durations
+    - Currently running tasks
+
+    Args:
+        api_key: API key for authentication
+
+    Returns:
+        Dictionary containing task metrics
+    """
+    logger.info("Task metrics requested")
+
+    metrics = get_task_metrics()
+
+    return {
+        "metrics": metrics,
+        "timestamp": datetime.utcnow().isoformat() + "Z"
+    }
+
+
+@router.get("/tasks/health", status_code=200)
+async def get_health(
+    api_key: str = Depends(verify_api_key)
+) -> Dict[str, Any]:
+    """
+    Get task queue health status
+
+    Returns health status with alerts for:
+    - High failure rates
+    - Long-running tasks
+    - Other anomalies
+
+    Args:
+        api_key: API key for authentication
+
+    Returns:
+        Dictionary containing health status and alerts
+    """
+    logger.info("Task health check requested")
+
+    health = check_task_health()
+
+    return health

@@ -11,7 +11,15 @@
       "Bash(docker run:*)",
       "Bash(uvicorn:*)",
       "Bash(pkill:*)",
-      "WebFetch(domain:tasks.ft.tc)"
+      "WebFetch(domain:tasks.ft.tc)",
+      "Read(//usr/bin/**)",
+      "Bash(venv/bin/pip list:*)",
+      "Bash(pm2 delete:*)",
+      "Bash(pm2 save:*)",
+      "Bash(pm2 restart:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)"
     ],
     "deny": [],
     "ask": []
