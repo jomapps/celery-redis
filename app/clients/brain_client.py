@@ -355,6 +355,102 @@ class BrainServiceClient:
         self.connected = False
         logger.info("Disconnected from brain service")
 
+    async def get_brain_context_async(self, project_id: str, limit: int = 50) -> List[Dict[str, Any]]:
+        """
+        Get semantic context from Brain for a project
+
+        Args:
+            project_id: Project identifier
+            limit: Maximum number of context items to return
+
+        Returns:
+            List of context items from Brain
+        """
+        try:
+            result = await self._send_request("get_context", {
+                "project_id": project_id,
+                "limit": limit
+            })
+            return result.get("context", [])
+        except Exception as e:
+            logger.error("Error getting brain context", project_id=project_id, error=str(e))
+            return []
+
+    async def get_department_context_async(self, project_id: str, department: str) -> List[Dict[str, Any]]:
+        """
+        Get department-specific context from Brain
+
+        Args:
+            project_id: Project identifier
+            department: Department slug
+
+        Returns:
+            List of department-specific context items
+        """
+        try:
+            result = await self._send_request("get_department_context", {
+                "project_id": project_id,
+                "department": department
+            })
+            return result.get("context", [])
+        except Exception as e:
+            logger.error("Error getting department context",
+                        project_id=project_id, department=department, error=str(e))
+            return []
+
+    async def index_in_brain_async(
+        self,
+        project_id: str,
+        items: List[Dict[str, Any]],
+        department: Dict[str, Any]
+    ) -> bool:
+        """
+        Index gather items in Brain (Neo4j)
+
+        Args:
+            project_id: Project identifier
+            items: List of gather items to index
+            department: Department configuration
+
+        Returns:
+            True if indexed successfully
+        """
+        try:
+            nodes = []
+            for item in items:
+                node = {
+                    "id": item.get('_id', str(uuid.uuid4())),
+                    "projectId": project_id,
+                    "content": item.get('content', ''),
+                    "summary": item.get('summary', ''),
+                    "department": department['slug'],
+                    "departmentName": department.get('name', ''),
+                    "type": "GatherItem",
+                    "automated": True,
+                    "metadata": item.get('automationMetadata', {})
+                }
+                nodes.append(node)
+
+            result = await self._send_request("batch_create_nodes", {
+                "project_id": project_id,
+                "nodes": nodes
+            })
+
+            success = result.get("success", False)
+            if success:
+                logger.info("Indexed items in brain",
+                           project_id=project_id,
+                           department=department['slug'],
+                           count=len(items))
+            return success
+
+        except Exception as e:
+            logger.error("Error indexing in brain",
+                        project_id=project_id,
+                        department=department.get('slug'),
+                        error=str(e))
+            return False
+
     async def health_check(self) -> bool:
         """Check if brain service is healthy and responsive"""
         try:
@@ -382,3 +478,57 @@ class BrainServiceClient:
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         """Async context manager exit"""
         await self.disconnect()
+
+
+# Synchronous wrapper functions for use in Celery tasks
+def get_brain_context(project_id: str, limit: int = 50) -> List[Dict[str, Any]]:
+    """
+    Synchronous wrapper for getting brain context
+    """
+    import os
+    brain_url = os.getenv('BRAIN_SERVICE_URL', 'http://localhost:8002')
+    client = BrainServiceClient(brain_url)
+
+    try:
+        return asyncio.run(client.get_brain_context_async(project_id, limit))
+    except Exception as e:
+        logger.error("Error in get_brain_context", project_id=project_id, error=str(e))
+        return []
+
+
+def get_department_context(project_id: str, department: str) -> List[Dict[str, Any]]:
+    """
+    Synchronous wrapper for getting department context
+    """
+    import os
+    brain_url = os.getenv('BRAIN_SERVICE_URL', 'http://localhost:8002')
+    client = BrainServiceClient(brain_url)
+
+    try:
+        return asyncio.run(client.get_department_context_async(project_id, department))
+    except Exception as e:
+        logger.error("Error in get_department_context",
+                    project_id=project_id, department=department, error=str(e))
+        return []
+
+
+def index_in_brain(
+    project_id: str,
+    items: List[Dict[str, Any]],
+    department: Dict[str, Any]
+) -> bool:
+    """
+    Synchronous wrapper for indexing in brain
+    """
+    import os
+    brain_url = os.getenv('BRAIN_SERVICE_URL', 'http://localhost:8002')
+    client = BrainServiceClient(brain_url)
+
+    try:
+        return asyncio.run(client.index_in_brain_async(project_id, items, department))
+    except Exception as e:
+        logger.error("Error in index_in_brain",
+                    project_id=project_id,
+                    department=department.get('slug'),
+                    error=str(e))
+        return False
