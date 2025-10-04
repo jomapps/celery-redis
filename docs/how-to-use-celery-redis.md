@@ -64,6 +64,7 @@ Submit a new task for background processing.
 - `generate_character_voice` - Synthesize character dialogue
 - `process_audio` - Audio mixing and enhancement
 - `render_animation` - Character animation rendering
+- `evaluate_department` - AI-powered department evaluation for project readiness (Aladdin integration)
 - `test_prompt` - Test agent prompts with immediate results
 
 ### 2. Get Task Status
@@ -1031,6 +1032,226 @@ ERROR: Failed to send webhook after all retries callback_url=https://... task_id
 }
 ```
 
+## Department Evaluation Task (Aladdin Integration)
+
+The `evaluate_department` task provides AI-powered evaluation of movie production departments for the Aladdin Project Readiness system.
+
+### Overview
+
+This task evaluates department readiness based on gathered content and provides:
+- Quality rating (0-100)
+- Pass/fail result based on threshold
+- Comprehensive evaluation summary
+- Specific issues identified
+- Actionable improvement suggestions
+
+### Submit Evaluation Task
+
+**POST** `/api/v1/tasks/submit`
+
+```json
+{
+  "project_id": "68df4dab400c86a6a8cf40c6",
+  "task_type": "evaluate_department",
+  "task_data": {
+    "department_slug": "story",
+    "department_number": 1,
+    "gather_data": [
+      {
+        "content": "A young detective arrives in a small coastal town to investigate mysterious disappearances...",
+        "summary": "Main story premise",
+        "context": "Mystery thriller genre"
+      },
+      {
+        "content": "Three-act structure with clear character arcs...",
+        "summary": "Story structure",
+        "context": "Narrative framework"
+      }
+    ],
+    "previous_evaluations": [
+      {
+        "department": "concept",
+        "rating": 85,
+        "summary": "Strong conceptual foundation"
+      }
+    ],
+    "threshold": 80
+  },
+  "priority": 1,
+  "callback_url": "https://aladdin.ngrok.pro/api/webhooks/evaluation-complete",
+  "metadata": {
+    "user_id": "user123",
+    "department_id": "dept-story-001"
+  }
+}
+```
+
+### Request Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `department_slug` | string | Yes | Department name (e.g., "story", "character", "production") |
+| `department_number` | integer | Yes | Sequential department number (1-12) |
+| `gather_data` | array | Yes | Array of gathered content items with content, summary, context |
+| `previous_evaluations` | array | No | Array of previous department evaluations for context |
+| `threshold` | integer | Yes | Minimum passing score (0-100), default: 80 |
+
+### Evaluation Response (Webhook)
+
+```json
+{
+  "task_id": "abc123-def456-ghi789",
+  "project_id": "68df4dab400c86a6a8cf40c6",
+  "status": "completed",
+  "result": {
+    "department": "story",
+    "rating": 85,
+    "evaluation_result": "pass",
+    "evaluation_summary": "The story department shows strong narrative structure with well-developed characters and clear three-act progression. The protagonist's journey is compelling and the conflict is well-established.",
+    "issues": [
+      "Character backstory needs more depth",
+      "Third act resolution feels rushed",
+      "Supporting character arcs underdeveloped"
+    ],
+    "suggestions": [
+      "Add flashback scenes to establish character motivation",
+      "Extend climax sequence by 2-3 minutes",
+      "Develop supporting character relationships"
+    ],
+    "iteration_count": 1,
+    "processing_time": 45.2,
+    "metadata": {
+      "model": "gpt-4",
+      "tokens_used": 1500,
+      "confidence_score": 0.85
+    }
+  },
+  "completed_at": "2025-01-15T10:35:30Z",
+  "metadata": {
+    "user_id": "user123",
+    "department_id": "dept-story-001"
+  }
+}
+```
+
+### Supported Departments
+
+The evaluation system supports these department types:
+
+1. **Story** - Narrative structure, plot, themes
+2. **Character** - Character profiles, arcs, relationships
+3. **Production** - Resources, budget, timeline
+4. **Visual** - Visual style, cinematography, effects
+5. **Audio** - Sound design, music, dialogue
+6. **Editing** - Pacing, transitions, continuity
+7. **Marketing** - Promotion, distribution, audience
+8. **Legal** - Rights, contracts, compliance
+9. **Technical** - Equipment, software, infrastructure
+10. **Post-Production** - Color grading, VFX, final mix
+11. **Distribution** - Release strategy, platforms
+12. **Archive** - Asset management, preservation
+
+### Performance
+
+- **Expected Duration**: 30-120 seconds
+- **Token Usage**: 1000-5000 tokens per evaluation
+- **Queue**: `cpu_intensive`
+- **Timeout**: 300 seconds maximum
+
+### Example Usage (TypeScript)
+
+```typescript
+// Submit evaluation task
+const response = await fetch('https://tasks.ft.tc/api/v1/tasks/submit', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'X-API-Key': process.env.CELERY_API_KEY
+  },
+  body: JSON.stringify({
+    project_id: projectId,
+    task_type: 'evaluate_department',
+    task_data: {
+      department_slug: 'story',
+      department_number: 1,
+      gather_data: gatherDataArray,
+      previous_evaluations: previousEvals,
+      threshold: 80
+    },
+    callback_url: `${process.env.APP_URL}/api/webhooks/evaluation-complete`,
+    metadata: {
+      user_id: userId,
+      department_id: departmentId
+    }
+  })
+});
+
+const { task_id } = await response.json();
+
+// Handle webhook callback
+export async function POST(req: Request) {
+  const payload = await req.json();
+
+  if (payload.status === 'completed') {
+    const { rating, evaluation_result, evaluation_summary, issues, suggestions } = payload.result;
+
+    // Update department status
+    await updateDepartment({
+      id: payload.metadata.department_id,
+      rating,
+      status: evaluation_result,
+      summary: evaluation_summary,
+      issues,
+      suggestions
+    });
+
+    // Notify user
+    await notifyUser(payload.metadata.user_id, {
+      type: 'evaluation_complete',
+      department: payload.result.department,
+      rating,
+      result: evaluation_result
+    });
+  }
+
+  return Response.json({ received: true });
+}
+```
+
+### Error Handling
+
+**Insufficient Data:**
+```json
+{
+  "result": {
+    "rating": 0,
+    "evaluation_result": "fail",
+    "evaluation_summary": "Insufficient data provided for evaluation",
+    "issues": ["No gather data provided"],
+    "suggestions": ["Gather content for department"]
+  }
+}
+```
+
+**AI Service Failure:**
+```json
+{
+  "result": {
+    "rating": 50,
+    "evaluation_summary": "Evaluation could not be completed: AI service timeout",
+    "issues": ["AI evaluation service unavailable"],
+    "suggestions": ["Retry evaluation when service is available"]
+  }
+}
+```
+
+### Additional Resources
+
+- [Complete Evaluation Task Documentation](./evaluate-department-task.md)
+- [Implementation Details](./requests/IMPLEMENTATION_COMPLETE.md)
+
+---
+
 ## Best Practices
 
 ### 1. Project ID Isolation
@@ -1105,5 +1326,6 @@ Include these details when reporting issues:
 | Video Generation | 2-8 minutes | 15 minutes |
 | Voice Generation | 10-30 seconds | 2 minutes |
 | Prompt Testing | 5-15 seconds | 1 minute |
+| Department Evaluation | 30-120 seconds | 5 minutes |
 
 This service handles all the heavy computational work so your applications can focus on user experience and workflow management!
