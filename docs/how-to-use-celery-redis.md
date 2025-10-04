@@ -65,6 +65,7 @@ Submit a new task for background processing.
 - `process_audio` - Audio mixing and enhancement
 - `render_animation` - Character animation rendering
 - `evaluate_department` - AI-powered department evaluation for project readiness (Aladdin integration)
+- `automated_gather_creation` - Automated content gathering and organization (long-running, 10min timeout)
 - `test_prompt` - Test agent prompts with immediate results
 
 ### 2. Get Task Status
@@ -141,18 +142,54 @@ Get all tasks for a specific project with filtering.
 
 ### 4. Cancel Task
 
-**DELETE** `/api/v1/tasks/{task_id}/cancel`
+**DELETE** `/api/v1/tasks/{task_id}`
 
-Cancel a queued or processing task.
+Cancel a queued or running task. The task will be gracefully terminated with SIGTERM.
 
-#### Response
+#### Request
+```bash
+curl -X DELETE https://tasks.ft.tc/api/v1/tasks/{task_id} \
+  -H "X-API-Key: your_celery_api_key_here"
+```
+
+#### Response (Queued Task)
 ```json
 {
   "task_id": "abc123-def456-ghi789",
   "status": "cancelled",
-  "message": "Task cancelled successfully"
+  "message": "Task was queued and has been revoked",
+  "previous_state": "queued",
+  "cancelled_at": "2025-10-04T04:00:00Z"
 }
 ```
+
+#### Response (Running Task)
+```json
+{
+  "task_id": "abc123-def456-ghi789",
+  "status": "cancelled",
+  "message": "Task was running and has been terminated",
+  "previous_state": "processing",
+  "cancelled_at": "2025-10-04T04:00:00Z"
+}
+```
+
+#### Response (Already Completed)
+```json
+{
+  "detail": "Task has already completed successfully and cannot be cancelled"
+}
+```
+
+#### Cancellation Behavior
+
+| Task State | Action | Result |
+|------------|--------|--------|
+| **PENDING** (queued) | Revoke without termination | Task removed from queue |
+| **STARTED** (running) | Revoke with SIGTERM | Task process terminated gracefully |
+| **SUCCESS** (completed) | No action | HTTP 400 error |
+| **FAILURE** (failed) | No action | HTTP 400 error |
+| **REVOKED** (cancelled) | No action | Returns already cancelled status |
 
 ### 5. Retry Task
 
@@ -195,6 +232,128 @@ Check service health and system status.
   "uptime": 86400
 }
 ```
+
+### 7. Get Task Metrics
+
+**GET** `/api/v1/tasks/metrics`
+
+Get real-time task queue metrics and statistics.
+
+#### Request
+```bash
+curl https://tasks.ft.tc/api/v1/tasks/metrics \
+  -H "X-API-Key: your_celery_api_key_here"
+```
+
+#### Response
+```json
+{
+  "metrics": {
+    "total_tasks": 1523,
+    "completed_tasks": 1398,
+    "failed_tasks": 89,
+    "retried_tasks": 36,
+    "cancelled_tasks": 0,
+    "success_rate": 91.8,
+    "failure_rate": 5.8,
+    "average_durations": {
+      "generate_video": 287.5,
+      "generate_image": 45.2,
+      "evaluate_department": 125.8,
+      "automated_gather_creation": 342.1
+    },
+    "currently_running": 4
+  },
+  "timestamp": "2025-10-04T04:00:00Z"
+}
+```
+
+#### Metrics Explained
+
+| Metric | Description |
+|--------|-------------|
+| `total_tasks` | Total number of tasks processed since worker start |
+| `completed_tasks` | Successfully completed tasks |
+| `failed_tasks` | Tasks that failed after all retries |
+| `retried_tasks` | Number of retry attempts made |
+| `cancelled_tasks` | Tasks cancelled by users |
+| `success_rate` | Percentage of successful tasks |
+| `failure_rate` | Percentage of failed tasks |
+| `average_durations` | Average execution time per task type (seconds) |
+| `currently_running` | Number of tasks currently being processed |
+
+### 8. Get Task Queue Health
+
+**GET** `/api/v1/tasks/health`
+
+Get task queue health status with alerts and anomaly detection.
+
+#### Request
+```bash
+curl https://tasks.ft.tc/api/v1/tasks/health \
+  -H "X-API-Key: your_celery_api_key_here"
+```
+
+#### Response (Healthy)
+```json
+{
+  "status": "healthy",
+  "metrics": {
+    "total_tasks": 1523,
+    "completed_tasks": 1398,
+    "failed_tasks": 89,
+    "success_rate": 91.8,
+    "failure_rate": 5.8,
+    "currently_running": 4
+  },
+  "alerts": [],
+  "timestamp": "2025-10-04T04:00:00Z"
+}
+```
+
+#### Response (With Alerts)
+```json
+{
+  "status": "warning",
+  "metrics": {
+    "total_tasks": 1523,
+    "success_rate": 88.5,
+    "failure_rate": 11.5
+  },
+  "alerts": [
+    {
+      "severity": "warning",
+      "message": "Elevated failure rate: 11.50%",
+      "metric": "failure_rate",
+      "value": 11.5
+    },
+    {
+      "severity": "warning",
+      "message": "Task abc-123-def running for 485 seconds",
+      "metric": "task_duration",
+      "value": 485,
+      "task_id": "abc-123-def"
+    }
+  ],
+  "timestamp": "2025-10-04T04:00:00Z"
+}
+```
+
+#### Health Status Values
+
+| Status | Description | Action Required |
+|--------|-------------|-----------------|
+| `healthy` | All systems normal | None |
+| `warning` | Elevated metrics detected | Monitor closely |
+| `critical` | Severe issues detected | Immediate attention required |
+
+#### Alert Thresholds
+
+| Alert | Warning | Critical |
+|-------|---------|----------|
+| **Failure Rate** | >10% | >20% |
+| **Task Duration** | >8 minutes | >9.5 minutes |
+| **Memory Usage** | >1.5GB | >1.9GB |
 
 ## Task Type Specifications
 
@@ -1249,6 +1408,152 @@ export async function POST(req: Request) {
 
 - [Complete Evaluation Task Documentation](./evaluate-department-task.md)
 - [Implementation Details](./requests/IMPLEMENTATION_COMPLETE.md)
+
+---
+
+## Task Queue Configuration
+
+### Queue Types
+
+The task service uses dedicated queues for different workload types:
+
+| Queue | Purpose | Concurrency | Timeout | Use Cases |
+|-------|---------|-------------|---------|-----------|
+| `gpu_heavy` | GPU-intensive tasks | 2 | 10 min | Video generation, 3D rendering |
+| `gpu_medium` | Moderate GPU tasks | 4 | 5 min | Image generation, style transfer |
+| `cpu_intensive` | CPU-heavy tasks | 4 | 10 min | Audio processing, data analysis, automated gather creation |
+| `default` | Light tasks | 8 | 2 min | Text processing, API calls |
+
+### Task Routing
+
+Tasks are automatically routed to appropriate queues based on task type:
+
+```python
+# Automatic routing configuration
+task_routes = {
+    'generate_video': {'queue': 'gpu_heavy'},
+    'generate_image': {'queue': 'gpu_medium'},
+    'process_audio': {'queue': 'cpu_intensive'},
+    'automated_gather_creation': {'queue': 'cpu_intensive'},
+    'evaluate_department': {'queue': 'cpu_intensive'},
+}
+```
+
+### Timeout Configuration
+
+Each task type has specific timeout settings:
+
+| Task Type | Soft Timeout | Hard Timeout | Behavior |
+|-----------|--------------|--------------|----------|
+| `automated_gather_creation` | 9 minutes | 10 minutes | Graceful shutdown at 9min, force kill at 10min |
+| `generate_video` | 9 minutes | 10 minutes | Same as above |
+| `generate_image` | 4.5 minutes | 5 minutes | Shorter timeout for faster tasks |
+| `evaluate_department` | 4.5 minutes | 5 minutes | AI evaluation with timeout protection |
+
+**Soft Timeout**: Task receives `SoftTimeLimitExceeded` exception and can clean up gracefully.
+**Hard Timeout**: Task is forcefully terminated with `SIGKILL`.
+
+### Retry Configuration
+
+Failed tasks are automatically retried with exponential backoff:
+
+```
+Retry Schedule:
+- Attempt 1: Immediate
+- Attempt 2: After 60 seconds
+- Attempt 3: After 120 seconds (2 minutes)
+- Attempt 4: After 240 seconds (4 minutes)
+- Final Failure: After 3 failed attempts
+```
+
+**Retry Conditions**:
+- Connection errors (Redis, external APIs)
+- Timeout errors
+- Temporary service unavailability
+- Resource exhaustion (will retry when resources available)
+
+**No Retry**:
+- Invalid input data
+- Authentication failures
+- Permanent errors (404, 403)
+
+### Resource Limits
+
+Worker resource limits prevent memory leaks and ensure stability:
+
+| Setting | Value | Purpose |
+|---------|-------|---------|
+| **Worker Memory Limit** | 2GB | Restart worker if memory exceeds limit |
+| **Tasks Per Worker** | 10 | Restart worker after processing 10 tasks |
+| **Worker Concurrency** | 4 | Number of parallel task processes |
+| **Prefetch Multiplier** | 1 | Tasks to prefetch per worker (prevents hoarding) |
+
+### Monitoring & Alerts
+
+The task queue includes built-in monitoring with automatic alerts:
+
+**Monitored Metrics**:
+- Task success/failure rates
+- Average task durations
+- Queue lengths
+- Worker memory usage
+- Long-running tasks
+
+**Automatic Alerts**:
+- ⚠️ **Warning**: Failure rate >10%, task running >8 minutes
+- 🚨 **Critical**: Failure rate >20%, worker memory >1.9GB
+
+**Access Monitoring**:
+```bash
+# Get current metrics
+curl -H "X-API-Key: $API_KEY" https://tasks.ft.tc/api/v1/tasks/metrics
+
+# Get health status with alerts
+curl -H "X-API-Key: $API_KEY" https://tasks.ft.tc/api/v1/tasks/health
+```
+
+### Task Cancellation
+
+Tasks can be cancelled at any time:
+
+**Cancellation Process**:
+1. Client sends `DELETE /api/v1/tasks/{task_id}`
+2. System checks task state
+3. If queued: Task removed from queue
+4. If running: SIGTERM sent to worker process
+5. Worker has 30 seconds to clean up gracefully
+6. After 30 seconds: SIGKILL if still running
+
+**Graceful Shutdown**:
+Tasks should handle cancellation gracefully:
+```python
+from celery.exceptions import SoftTimeLimitExceeded
+
+try:
+    # Task logic here
+    process_data()
+except SoftTimeLimitExceeded:
+    # Clean up resources
+    cleanup()
+    raise
+```
+
+### Performance Expectations
+
+| Task Type | Avg Duration | P95 Duration | Success Rate |
+|-----------|--------------|--------------|--------------|
+| `generate_video` | 4-6 minutes | 8 minutes | >95% |
+| `generate_image` | 30-60 seconds | 2 minutes | >98% |
+| `process_audio` | 15-30 seconds | 1 minute | >99% |
+| `evaluate_department` | 1-2 minutes | 4 minutes | >95% |
+| `automated_gather_creation` | 3-5 minutes | 8 minutes | >90% |
+
+### Configuration Documentation
+
+For detailed configuration information, see:
+- [Task Queue Configuration Guide](./task-queue-configuration.md)
+- [Task Queue Implementation](./TASK_QUEUE_IMPLEMENTATION.md)
+- [Quick Reference Guide](./TASK_QUEUE_QUICK_REFERENCE.md)
 
 ---
 
